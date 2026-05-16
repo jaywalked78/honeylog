@@ -1,0 +1,71 @@
+{
+  "name": "honeylog",
+  "version": "0.1.0",
+  "description": "Threat-detection and request-fingerprinting middleware for Express. Catches scanners, classifies attack patterns, and gives you a defensible audit log.",
+  "type": "module",
+  "main": "src/index.js",
+  "types": "./src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "import": "./src/index.js"
+    },
+    "./patterns": {
+      "types": "./src/index.d.ts",
+      "import": "./src/middleware/threatDefinitions.js"
+    }
+  },
+  "files": [
+    "src",
+    "migrations",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "echo \"No tests yet\" && exit 0",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "express",
+    "middleware",
+    "security",
+    "honeypot",
+    "threat-detection",
+    "waf",
+    "scanner-detection",
+    "appsec",
+    "logging",
+    "owasp"
+  ],
+  "author": "Jason Cox",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/jsonwebtoken": "^9.0.0",
+    "@types/pg": "^8.11.0",
+    "typescript": "^5.5.0"
+  },
+  "peerDependencies": {
+    "express": ">=4.0.0",
+    "pg": ">=8.0.0"
+  },
+  "peerDependenciesMeta": {
+    "jsonwebtoken": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jaywalked78/honeylog.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jaywalked78/honeylog/issues"
+  },
+  "homepage": "https://github.com/jaywalked78/honeylog#readme",
+  "dependencies": {
+    "maxmind": "^5.0.6"
+  }
+}

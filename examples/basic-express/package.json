@@ -1,0 +1,14 @@
+{
+  "name": "honeylog-example-basic-express",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node app.js"
+  },
+  "dependencies": {
+    "express": "^4.19.0",
+    "pg": "^8.11.0",
+    "honeylog": "file:../.."
+  }
+}

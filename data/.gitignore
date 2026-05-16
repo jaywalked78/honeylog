@@ -1,0 +1,4 @@
+# MaxMind GeoLite2 databases. Users must download these under their own
+# MaxMind license; the license explicitly prohibits redistribution, so we
+# don't ship them and we don't accept them in PRs.
+*.mmdb
