@@ -1,12 +1,16 @@
 import maxmind from "maxmind";
 
+// === SHARED TYPES ===
+
 let cityDb = null;
 let asnDb = null;
 
 /**
  * Initialize MaxMind GeoLite2 databases. Call once at app startup, before
  * mounting `honey`. If either path fails to load, geo enrichment for that
- * dimension is silently disabled and the middleware keeps working.
+ * layer is silently disabled and the middleware keeps working.MaxMind's free
+ * databases don't always have city/coordinate coverage, and some IPs land in
+ * one DB but not the other.
  *
  * @param {Object} options
  * @param {string} [options.cityPath]  Absolute path to GeoLite2-City.mmdb.
@@ -18,31 +22,23 @@ let asnDb = null;
 export async function initGeo({ cityPath, asnPath, logger = console } = {}) {
   let loaded = 0;
 
-  if (cityPath) {
+  const loadDb = async (label, dbPath) => {
+    if (!dbPath) return;
     try {
-      cityDb = await maxmind.open(cityPath);
-      loaded++;
+      return await maxmind.open(dbPath);
     } catch (error) {
       (logger.error || console.error).call(
         logger,
-        "[honeylog] GeoLite2-City failed to load:",
-        error.message,
+        `[honeylog] ${label} failed to load: ${error.message}`,
       );
     }
-  }
+  };
 
-  if (asnPath) {
-    try {
-      asnDb = await maxmind.open(asnPath);
-      loaded++;
-    } catch (error) {
-      (logger.error || console.error).call(
-        logger,
-        "[honeylog] GeoLite2-ASN failed to load:",
-        error.message,
-      );
-    }
-  }
+  [cityDb, asnDb] = await Promise.all([
+    loadDb("GeoLite2-City", cityPath),
+    loadDb("GeoLite2-ASN", asnPath),
+  ]);
+  loaded = (cityDb ? 1 : 0) + (asnDb ? 1 : 0);
 
   if (loaded > 0) {
     (logger.info || console.log).call(

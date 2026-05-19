@@ -18,7 +18,7 @@
  *
  * FORWARDING CHAIN ANALYSIS
  *   Trusted hops: Cloudflare (sets CF-Connecting-IP) + a single reverse proxy
- *   (appends to XFF). A normal production chain has at most 2 XFF entries.
+ *   (appends to X-Forwarded-For). A normal production chain has at most 2 XFF entries.
  *   More means the client pre-loaded the header before reaching Cloudflare -
  *   the leftmost entries are attacker-supplied. forwarding_chain is only
  *   persisted when there's something worth storing (multi-hop or CF headers).
@@ -32,6 +32,20 @@ import {
   METHOD_THREATS,
   BODY_THREATS,
 } from "./threatDefinitions.js";
+
+// === SHARED TYPES ===
+
+/**
+ * Optional payload attached by an upstream rate-limiter middleware. If
+ * present, honey records it as a `rate_limit` signal and bumps the threat
+ * level when severity exceeds existing signals.
+ *
+ * @typedef {Object} RateLimitInfo
+ * @property {string} tier                     e.g. "auth", "probe", "write"
+ * @property {"low"|"medium"|"high"} severity
+ * @property {number} count
+ * @property {number} limit
+ */
 
 // === SOURCE DETECTION ===
 
@@ -187,8 +201,21 @@ const buildRedactor = (sensitiveKeys) => {
   return redact;
 };
 
-// === PUBLIC FACTORY ===
+// === HONEY MIDDLEWARE CONFIGURATION ===
 
+/**
+ * Create the honey middleware. Mount once per Express app, after any cookie/body parsers and (optionally) rate-limiter.
+ *
+ * @param {Object} options
+ * @param {{ query: Function }} options.pgPool - pg.Pool-compatible instance (anything with `.query(sql, params)`).
+ * @param {string[]} [options.skipPaths=[]] - Exact paths to skip (e.g. `/health`, `/metrics`).
+ * @param {string[]} [options.cookieNames=[]] - Cookie/header names to inspect for a JWT (first hit wins).
+ * @param {string|null} [options.jwtSecret=null] - HMAC secret. Required to enable JWT-derived `user_id` / `session_id`.
+ * @param {RegExp|null} [options.redactKeys=null] - Override the default PII key pattern (password|token|secret|...).
+ * @param {{ info?: Function, warn?: Function, error?: Function }} [options.logger=console] - Logger for internal errors (DB write failures, JWT decode warnings).
+ * @param {string} [options.tableName="logs_requests"] - The target table. Must already exist with the schema from migrations/.
+ * @returns {(req: import("express").Request, res: import("express").Response, next: Function) => void} - The honey middleware itself.
+ */
 export function honey(options) {
   const {
     pgPool,
@@ -212,6 +239,7 @@ export function honey(options) {
 
   // Defer importing jsonwebtoken so it stays a truly optional peer dependency.
   // Requests that fire before it resolves will simply skip JWT decode.
+  // Ideally we would have middleware to verify the token and pass it as a request header before it is passed to this honey middleware
   let jwtLib = null;
   if (jwtEnabled) {
     // @ts-ignore - jsonwebtoken is an optional peer dependency
@@ -262,8 +290,7 @@ export function honey(options) {
       const ipSafe = VALID_IP.test(rawIp);
       const ip = ipSafe ? rawIp : "0.0.0.0";
 
-      // Run threat detection across path, method, body, and URL
-      const threats = detectThreats(req);
+      const threats = detectThreats(req); // Run threat detection across path, method, body, and URL
 
       // IP spoof overrides if detected (highest possible signal)
       if (!ipSafe) {
@@ -276,8 +303,12 @@ export function honey(options) {
         });
       }
 
-      if (req.rateLimitInfo) {
-        const rl = req.rateLimitInfo;
+      // Reads optional rateLimitInfo set by an upstream rate-limiter middleware
+      // not currently bundled with honey
+      const rl = /** @type {RateLimitInfo | undefined} */ (
+        /** @type {any} */ (req).rateLimitInfo
+      );
+      if (rl) {
         threats.signals = (threats.signals || []).concat({
           category: "rate_limit",
           tier: rl.tier,

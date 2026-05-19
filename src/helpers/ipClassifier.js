@@ -297,6 +297,14 @@ const ORG_PATTERNS = [
   },
 ];
 
+/**
+ * Classify an IP from its ASN/org data. Exact ASN match first, then org-name
+ * regex fallback. Returns "unknown" if nothing matches, or null if there's no
+ * ASN at all to work with.
+ *
+ * @param {{ asn: number|null, org: string|null } | null | undefined} geoData
+ * @returns {string | null}  one of "hosting", "isp", "corporate", "government", "education", "unknown", or null
+ */
 export function classifyIp(geoData) {
   if (!geoData || !geoData.asn) return null;
 
@@ -318,7 +326,9 @@ const torExitNodes = new Set();
 
 export async function fetchTorExitNodes() {
   try {
-    const response = await fetch("https://check.torproject.org/torbulkexitlist");
+    const response = await fetch(
+      "https://check.torproject.org/torbulkexitlist",
+    );
     if (!response.ok) {
       console.error(`[ipClassifier] Tor fetch failed: HTTP ${response.status}`);
       return;
