@@ -9,7 +9,7 @@
 honeylog is a single Express middleware that sits in front of your routes
 and writes every request to Postgres - with detection, classification, and
 enrichment baked in. It has been running in production on
-[`thelogicloom.dev`](https://thelogicloom.dev) for a year. The pattern
+[`thelogicloom.dev`](https://thelogicloom.dev) for several months. The pattern
 library is derived from real observed traffic, not blog posts.
 
 ---

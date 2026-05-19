@@ -6,8 +6,8 @@ All notable changes to honeylog are documented here. This project follows
 ## [0.1.0] - 2026-05-15
 
 Initial public release. Extracted from a production Express app
-(`thelogicloom.dev`) where it has been running for a year against real
-hostile traffic.
+(`thelogicloom.dev`) where it has been running for several months
+against real hostile traffic.
 
 ### Added
 
