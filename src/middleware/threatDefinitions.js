@@ -47,6 +47,7 @@ export const BOT_PATTERNS = [
   // Discovered from production traffic
   /silver\.inc/i,
   /visionheight/i,
+  /^-$/,
   /nvdorz/i,
   /CMS-Checker/i,
   /PAN GlobalProtect/i,
@@ -219,6 +220,30 @@ export const PATH_THREATS = [
     pattern: /\/update\/picture\.cgi/i,
     severity: "high",
     description: "IP camera CGI exploit",
+  },
+  // HIGH - GPON router web shell backdoor (CVE-2018-10561 / CVE-2018-10562 RCE)
+  {
+    pattern: /\/web_shell_cmd\.gch\b/i,
+    severity: "high",
+    description: "GPON router RCE probe (CVE-2018-10561)",
+  },
+  // HIGH - ONVIF camera service (IP camera enumeration + auth bypass)
+  {
+    pattern: /\/(ONVIF|onvif)\/(device_service|media\.cgi|media|Media|Events)/i,
+    severity: "high",
+    description: "ONVIF IP camera probe",
+  },
+  // HIGH - Redfish API (server hardware management - iLO/iDRAC/IPMI bare-metal access)
+  {
+    pattern: /\/redfish\/v\d+(\/|\b)/i,
+    severity: "high",
+    description: "Redfish server management API probe",
+  },
+  // HIGH - Python virtualenv directory (leaks installed packages, site-packages, sometimes secrets)
+  {
+    pattern: /\/\.venv(\/|\b)/i,
+    severity: "high",
+    description: "Python virtualenv directory probe",
   },
   // HIGH - AI tool config exposure
   {
@@ -403,9 +428,9 @@ export const PATH_THREATS = [
   },
   // HIGH - GCP service account key (contains private keys for GCP API access)
   {
-    pattern: /\/serviceAccountKey\.json\b/i,
+    pattern: /\/(serviceAccountKey|(firebase-|google-)?service-account|firebase-adminsdk)\.json\b/i,
     severity: "high",
-    description: "GCP service account key probe",
+    description: "GCP/Firebase service account key probe",
   },
   // HIGH - Google API private key (Pimcore-style buried path)
   {
@@ -490,7 +515,7 @@ export const PATH_THREATS = [
     description: "service credential file probe",
   },
   {
-    pattern: /\/(api[_-]?keys|client[_-]?secrets?)\.(json|env|txt|ya?ml)\b/i,
+    pattern: /\/(api[_-]?keys?|client[_-]?secrets?)\.(json|env|txt|ya?ml)\b/i,
     severity: "high",
     description: "API key/secret file probe",
   },
@@ -618,7 +643,7 @@ export const PATH_THREATS = [
     description: "VPN/remote access probe",
   },
   {
-    pattern: /global-protect|ssl-vpn\/prelogin|\/sonicos\//i,
+    pattern: /global-protect|ssl-vpn\/prelogin|\/sonicos\/|\/sonicui\//i,
     severity: "medium",
     description: "Palo Alto/SonicWall VPN probe",
   },

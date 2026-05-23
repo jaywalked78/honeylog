@@ -8,7 +8,7 @@ let asnDb = null;
 /**
  * Initialize MaxMind GeoLite2 databases. Call once at app startup, before
  * mounting `honey`. If either path fails to load, geo enrichment for that
- * layer is silently disabled and the middleware keeps working.MaxMind's free
+ * layer is silently disabled and the middleware keeps working. MaxMind's free
  * databases don't always have city/coordinate coverage, and some IPs land in
  * one DB but not the other.
  *
