@@ -42,7 +42,7 @@ export const BOT_PATTERNS = [
   /censys/i,
   /shodan/i,
   /internetmeasurement/i,
-  /paloalto/i,
+  /palo[\s-]?alto/i,
   /cortex/i,
   // Discovered from production traffic
   /silver\.inc/i,
@@ -76,6 +76,8 @@ export const BOT_PATTERNS = [
   /SecurityScanner\b/i,
   /recon-engine/i,
   /GPTBot/i,
+  /Project-Resonance/i,
+  /Infrawatch/i,
   // Malformed UAs - real browsers don't truncate mid-token or send minimal "(compatible)"
   /\(KHTML$/,
   /^Mozilla\/5\.0 \(compatible\)$/,
@@ -154,9 +156,47 @@ export const PATH_THREATS = [
   },
   // HIGH - URL-encoded dot bypass (scanners use %2e instead of . to evade dotfile rules)
   {
-    pattern: /%2e(env|git|svn|hg|aws|htaccess|htpasswd|npmrc|dockerenv)\b/i,
+    pattern: /%2e(env|git|svn|hg|aws|htaccess|htpasswd|npmrc|dockerenv|ssh|kube|docker|vscode|cursor|aider)\b/i,
     severity: "high",
     description: "dotfile probe (encoded dot bypass)",
+  },
+  // HIGH - URL-encoded extension bypass (scanners encode the dot before file extensions to evade rules)
+  {
+    pattern:
+      /%2e(sql|bak|backup|old|sav|swp|swo|orig|dump|conf|cnf|cfg|ini|ya?ml|json|toml|tar|zip|gz|tgz|rar|7z|key|pem|crt|p12|pfx|env|properties|tfvars|tfstate)\b/i,
+    severity: "high",
+    description: "config/backup file probe (encoded extension bypass)",
+  },
+  // HIGH - Cisco IOS privilege-15 EXEC RCE (libwww-perl scanners hit /level/15/exec/-/sh/run/CR for running-config disclosure)
+  {
+    pattern: /\/level\/\d+\/exec\b/i,
+    severity: "high",
+    description: "Cisco IOS privileged EXEC RCE probe",
+  },
+  // HIGH - /etc/* config file LFI in URL path (VPN/tunnel/mail server credentials)
+  {
+    pattern:
+      /^\/etc\/(exim4|mail|postfix|ssmtp|openvpn|wireguard|ipsec|nebula|cloudflared|headscale|netbird|twingate|strongswan|squid|haproxy|nginx|apache2|httpd)\b/i,
+    severity: "high",
+    description: "/etc service config LFI probe",
+  },
+  // HIGH - Docker CLI config directory (.docker/config.json contains registry credentials + auth tokens)
+  {
+    pattern: /\/\.docker\/(config|daemon)\b/i,
+    severity: "high",
+    description: "Docker CLI config probe (registry credentials)",
+  },
+  // HIGH - Magento app/etc directory (env.php holds encryption key, DB creds, admin paths)
+  {
+    pattern: /\/app\/etc\/(env|local|config)\.(php|xml|ya?ml)\b/i,
+    severity: "high",
+    description: "Magento app/etc config probe",
+  },
+  // HIGH - Bitrix CMS admin/backup paths (DB connection in bitrix/php_interface/dbconn.php, full backup restore via bitrix/restore.php)
+  {
+    pattern: /\/bitrix\/(admin|backup|restore\.php|php_interface\/dbconn|\.settings)/i,
+    severity: "high",
+    description: "Bitrix CMS admin/credential probe",
   },
   // HIGH - cloud instance metadata SSRF (AWS IMDSv1, GCP metadata server)
   {
@@ -209,6 +249,12 @@ export const PATH_THREATS = [
     pattern: /\/admin\b|\/manager\b|\/console\b/i,
     severity: "high",
     description: "admin panel probe",
+  },
+  // HIGH - Adobe ColdFusion CFIDE admin (CFIDE/administrator and componentutils have known auth bypass + RCE history)
+  {
+    pattern: /\/CFIDE\b/i,
+    severity: "high",
+    description: "Adobe ColdFusion CFIDE admin probe",
   },
   // HIGH - IoT/device exploits
   {
@@ -1045,6 +1091,38 @@ export const PATH_THREATS = [
     severity: "medium",
     description: "API discovery probe",
   },
+  // MEDIUM - generic API version/info/config discovery probes (any depth: /api/version, /api/v1/info, /api/v2.0/systeminfo, /api/4/config, etc.)
+  {
+    pattern:
+      /\/api(\/[\w.-]+)?\/(version|status|info|config|meta|about|environment|systeminfo|check-version|cluster\/summary|namespaces)\b/i,
+    severity: "medium",
+    description: "API version/info discovery probe",
+  },
+  // MEDIUM - misc API discovery endpoints (api-description, apisix gateway, allversions)
+  {
+    pattern: /\/(api-description|apisix\/|allversions\b)/i,
+    severity: "medium",
+    description: "API/gateway discovery probe",
+  },
+  // MEDIUM - login.* extension enumeration (scanners hit /login.php, /login.aspx, /login.jsp, /admin.X, /default.X, /index.X across many extensions to fingerprint framework)
+  {
+    pattern: /\/(login|admin|default|index|home|base)\.(asp|aspx|cfm|cgi|jhtml|jsa|jsp|jspx|do|action|pl|shtml)\b/i,
+    severity: "medium",
+    description: "framework fingerprinting via filename extension probe",
+  },
+  // MEDIUM - JSP/JHTML template files (.jhtml is ATG Dynamo / .jsp/.jspx is Tomcat - rarely legitimate at root on non-Java apps)
+  {
+    pattern: /\.(jhtml|jspx)\b/i,
+    severity: "medium",
+    description: "Java template file probe",
+  },
+  // MEDIUM - Symfony/Laravel app config layout (app/config/parameters.yml, application/configs/application.ini)
+  {
+    pattern:
+      /\/(app|application)\/configs?\/(parameters|config|database|application)(_[\w-]+|\.[\w-]+)?\.(yml|ya|php|ini|xml|json)\b/i,
+    severity: "medium",
+    description: "PHP framework app/config probe",
+  },
   // LOW - reconnaissance
   {
     pattern: /\/security\.txt/i,
@@ -1082,6 +1160,12 @@ export const PATH_THREATS = [
     pattern: /\/nmaplowercheck/i,
     severity: "low",
     description: "Nmap HTTP fingerprinting",
+  },
+  // LOW - cloud/WAF catchall probe (scanners check randomized path to detect blanket catchall WAF rules)
+  {
+    pattern: /^\/_zz_catchall_/i,
+    severity: "low",
+    description: "WAF catchall detection probe",
   },
   {
     pattern: /\/odinhttpcall/i,
