@@ -3,25 +3,28 @@
   "version": "0.1.0",
   "description": "Threat-detection and request-fingerprinting middleware for Express. Catches scanners, classifies attack patterns, and gives you a defensible audit log.",
   "type": "module",
-  "main": "src/index.js",
-  "types": "./src/index.d.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./src/index.d.ts",
-      "import": "./src/index.js"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
     },
     "./patterns": {
-      "types": "./src/index.d.ts",
-      "import": "./src/middleware/threatDefinitions.js"
+      "types": "./dist/middleware/threatDefinitions.d.ts",
+      "import": "./dist/middleware/threatDefinitions.js"
     }
   },
   "files": [
-    "src",
+    "dist",
     "migrations",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "prepare": "npm run build",
     "test": "echo \"No tests yet\" && exit 0",
     "typecheck": "tsc --noEmit"
   },

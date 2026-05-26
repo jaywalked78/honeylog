@@ -24,3 +24,30 @@ export {
   isTorExitNode,
   classifyIp,
 } from "./helpers/ipClassifier.js";
+
+// Type re-exports so consumers get full editor support.
+export type {
+  HoneyOptions,
+  HoneyLogger,
+  RateLimitInfo,
+  ThreatSignal,
+  ThreatResult,
+  ThreatLevel,
+  ForwardingChain,
+  Source,
+} from "./middleware/honey.js";
+
+export type {
+  Severity,
+  PathThreat,
+  MethodThreat,
+  BodyThreat,
+} from "./middleware/threatDefinitions.js";
+
+export type { IpClassification, GeoData } from "./helpers/ipClassifier.js";
+
+export type {
+  GeoLocation,
+  GeoLookupOptions,
+  GeoLookupLogger,
+} from "./helpers/geoLookup.js";

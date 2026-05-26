@@ -11,7 +11,27 @@
  *   BODY_THREATS   - request body patterns for injection/malware
  */
 
-export const BOT_PATTERNS = [
+export type Severity = "low" | "medium" | "high";
+
+export interface PathThreat {
+  pattern: RegExp;
+  severity: Severity;
+  description: string;
+}
+
+export interface MethodThreat {
+  method: string;
+  severity: Severity;
+  description: string;
+}
+
+export interface BodyThreat {
+  pattern: RegExp;
+  severity: Severity;
+  description: string;
+}
+
+export const BOT_PATTERNS: RegExp[] = [
   // Generic bot/crawler identifiers
   /bot\b/i,
   /crawl/i,
@@ -97,7 +117,7 @@ export const BOT_PATTERNS = [
   /survey/i,
 ];
 
-export const PATH_THREATS = [
+export const PATH_THREATS: PathThreat[] = [
   // HIGH - env files (any variant: .env, .env.local, .env.production, .envrc, .flaskenv, sendgrid.env, etc.)
   {
     pattern: /\.env(\b|_)/i,
@@ -1179,13 +1199,13 @@ export const PATH_THREATS = [
   },
 ];
 
-export const METHOD_THREATS = [
+export const METHOD_THREATS: MethodThreat[] = [
   { method: "PROPFIND", severity: "medium", description: "WebDAV scan" },
   { method: "TRACE", severity: "high", description: "XST attack vector" },
   { method: "CONNECT", severity: "high", description: "open proxy test" },
 ];
 
-export const BODY_THREATS = [
+export const BODY_THREATS: BodyThreat[] = [
   // SQL injection
   {
     pattern: /('|"|;)\s*(OR|AND)\s+[\d'"].*?[=<>]/i,

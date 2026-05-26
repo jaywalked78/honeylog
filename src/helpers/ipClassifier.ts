@@ -2,14 +2,27 @@
 // Returns one of: "hosting", "isp", "corporate", "government", "education", "unknown"
 // Returns null if geoData is missing or has no ASN.
 //
-// Maintenance: same workflow as threatDefinitions.js - add entries directly, push to master.
+// Maintenance: same workflow as threatDefinitions.ts - add entries directly, push to master.
 // Triage query for unknowns:
 //   SELECT ip_location->>'asn' AS asn, ip_location->>'org' AS org, COUNT(*) hits
 //   FROM tll.logs_requests WHERE ip_type = 'unknown' GROUP BY 1,2 ORDER BY hits DESC;
 
+export type IpClassification =
+  | "hosting"
+  | "isp"
+  | "corporate"
+  | "government"
+  | "education"
+  | "unknown";
+
+export interface GeoData {
+  asn: number | null;
+  org: string | null;
+}
+
 // === ASN REGISTRY ===
 
-const ASN_REGISTRY = new Map([
+const ASN_REGISTRY = new Map<number, IpClassification>([
   // --- Hosting: Major Cloud / CDN ---
   [63949, "hosting"], // Akamai / Linode
   [16509, "hosting"], // Amazon AWS
@@ -265,7 +278,12 @@ const ASN_REGISTRY = new Map([
   [138050, "government"], // Dinas Komunikasi Provins Jawa Barat
 ]);
 
-const ORG_PATTERNS = [
+interface OrgPattern {
+  pattern: RegExp;
+  type: IpClassification;
+}
+
+const ORG_PATTERNS: OrgPattern[] = [
   // Hosting - infrastructure keywords
   {
     pattern:
@@ -297,15 +315,13 @@ const ORG_PATTERNS = [
   },
 ];
 
-/**
- * Classify an IP from its ASN/org data. Exact ASN match first, then org-name
- * regex fallback. Returns "unknown" if nothing matches, or null if there's no
- * ASN at all to work with.
- *
- * @param {{ asn: number|null, org: string|null } | null | undefined} geoData
- * @returns {string | null}  one of "hosting", "isp", "corporate", "government", "education", "unknown", or null
- */
-export function classifyIp(geoData) {
+// Classify an IP from its ASN/org data. Exact ASN match first, then org-name
+// regex fallback. Returns "unknown" if nothing matches, or null if there's no
+// ASN at all to work with.
+
+export function classifyIp(
+  geoData: GeoData | null | undefined,
+): IpClassification | null {
   if (!geoData || !geoData.asn) return null;
 
   const asnType = ASN_REGISTRY.get(geoData.asn);
@@ -322,9 +338,9 @@ export function classifyIp(geoData) {
 
 // === TOR EXIT NODES ===
 
-const torExitNodes = new Set();
+const torExitNodes = new Set<string>();
 
-export async function fetchTorExitNodes() {
+export async function fetchTorExitNodes(): Promise<void> {
   try {
     const response = await fetch(
       "https://check.torproject.org/torbulkexitlist",
@@ -345,11 +361,11 @@ export async function fetchTorExitNodes() {
   }
 }
 
-export function startTorRefreshInterval() {
-  setInterval(fetchTorExitNodes, 1000 * 60 * 60 * 12);
+export function startTorRefreshInterval(): NodeJS.Timeout {
+  return setInterval(fetchTorExitNodes, 1000 * 60 * 60 * 12);
 }
 
-export function isTorExitNode(ip) {
+export function isTorExitNode(ip: string | null | undefined): boolean {
   if (!ip) return false;
   return torExitNodes.has(ip.trim());
 }
