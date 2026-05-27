@@ -33,7 +33,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  initGeo({
+  await initGeo({
     cityPath: process.env.GEO_CITY_DB_PATH,
     asnPath: process.env.GEO_ASN_DB_PATH,
   });

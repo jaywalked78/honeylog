@@ -189,7 +189,7 @@ export async function countBackfilledRowsInWindow(
   return parseInt(result[0].count, 10);
 }
 
-const COLS_PER_ROW = 20;
+const COLS_PER_ROW = 21;
 
 export async function bulkInsertBackfilledRows(
   rows: BackfilledRow[],
@@ -229,6 +229,7 @@ export async function bulkInsertBackfilledRows(
       r.ip_type,
       r.is_tor, // null for backfilled
       r.forwarding_chain ? JSON.stringify(r.forwarding_chain) : null,
+      r.created_at,
     );
   }
 
@@ -236,7 +237,8 @@ export async function bulkInsertBackfilledRows(
     INSERT INTO logs_requests
       (user_id, session_id, method, route, full_url, status_code, ip, user_agent,
        source, request_body, response_time_ms, response_size, origin, threat_level,
-       threat_details, ip_location, error_message, ip_type, is_tor, forwarding_chain)
+       threat_details, ip_location, error_message, ip_type, is_tor, forwarding_chain,
+       created_at)
     VALUES ${valuesClauses.join(", ")}
   `;
 
