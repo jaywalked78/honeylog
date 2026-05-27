@@ -1,5 +1,5 @@
 // Main middleware factory.
-export { honey } from "./middleware/honey.js";
+export { honey, detectThreats } from "./middleware/honey.js";
 
 // Threat pattern library - exported so consumers can extend, filter, or
 // inspect what honey is matching against.
@@ -32,6 +32,7 @@ export type {
   RateLimitInfo,
   ThreatSignal,
   ThreatResult,
+  ThreatDetectionInput,
   ThreatLevel,
   ForwardingChain,
   Source,
