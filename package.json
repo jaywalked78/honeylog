@@ -26,7 +26,11 @@
     "dev": "tsc --watch",
     "prepare": "npm run build",
     "test": "echo \"No tests yet\" && exit 0",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "migrate:up": "tsx src/migrate.ts up",
+    "migrate:down": "tsx src/migrate.ts down",
+    "migrate:status": "tsx src/migrate.ts status",
+    "migrate:reset": "tsx src/migrate.ts reset"
   },
   "keywords": [
     "express",
@@ -46,6 +50,7 @@
     "@types/express": "^4.17.21",
     "@types/jsonwebtoken": "^9.0.0",
     "@types/pg": "^8.11.0",
+    "tsx": "^4.22.3",
     "typescript": "^5.5.0"
   },
   "peerDependencies": {
@@ -69,6 +74,7 @@
   },
   "homepage": "https://github.com/jaywalked78/honeylog#readme",
   "dependencies": {
+    "dotenv": "^17.4.2",
     "maxmind": "^5.0.6"
   }
 }
