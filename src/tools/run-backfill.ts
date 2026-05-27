@@ -18,6 +18,11 @@ const NGINX_LOG_DIR = process.env.NGINX_LOG_DIR ?? "/var/log/nginx";
 const BATCH_SIZE = 500;
 const DRY_RUN = process.argv.includes("--dry-run");
 
+function getArg(name: string): string | null {
+  const idx = process.argv.indexOf(name);
+  return idx !== -1 && idx + 1 < process.argv.length ? process.argv[idx + 1] : null;
+}
+
 async function main(): Promise<void> {
   if (DRY_RUN) {
     console.log("=== DRY RUN: no rows will be inserted ===\n");
@@ -34,12 +39,30 @@ async function main(): Promise<void> {
   });
 
   // Window discovery
-  const startOfGap = await findLastRealRowTimestamp();
-  if (!startOfGap) {
-    console.error("No existing rows in logs_requests - nothing to backfill against");
-    process.exit(1);
+  const fromArg = getArg("--from");
+  const toArg = getArg("--to");
+
+  let startOfGap: Date;
+  let endOfGap: Date;
+
+  if (fromArg && toArg) {
+    startOfGap = new Date(fromArg);
+    endOfGap = new Date(toArg);
+    if (isNaN(startOfGap.getTime()) || isNaN(endOfGap.getTime())) {
+      console.error("Invalid --from or --to date. Use ISO format: 2026-05-23T16:19:16Z");
+      process.exit(1);
+    }
+  } else {
+    const detected = await findLastRealRowTimestamp();
+    if (!detected) {
+      console.error("No existing rows in logs_requests - nothing to backfill against");
+      process.exit(1);
+    }
+    startOfGap = detected;
+    endOfGap = new Date();
+    console.warn("WARN: Using auto-detected window. If app is currently writing rows, this is likely wrong.");
+    console.warn("      Use --from <iso> --to <iso> for explicit control.\n");
   }
-  const endOfGap = new Date();
 
   console.log(`Gap window: ${startOfGap.toISOString()}  ->  ${endOfGap.toISOString()}`);
 
