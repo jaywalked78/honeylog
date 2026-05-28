@@ -20,7 +20,9 @@ const DRY_RUN = process.argv.includes("--dry-run");
 
 function getArg(name: string): string | null {
   const idx = process.argv.indexOf(name);
-  return idx !== -1 && idx + 1 < process.argv.length ? process.argv[idx + 1] : null;
+  return idx !== -1 && idx + 1 < process.argv.length
+    ? process.argv[idx + 1]
+    : null;
 }
 
 async function main(): Promise<void> {
@@ -49,32 +51,42 @@ async function main(): Promise<void> {
     startOfGap = new Date(fromArg);
     endOfGap = new Date(toArg);
     if (isNaN(startOfGap.getTime()) || isNaN(endOfGap.getTime())) {
-      console.error("Invalid --from or --to date. Use ISO format: 2026-05-23T16:19:16Z");
+      console.error(
+        "Invalid --from or --to date. Use ISO format: 2026-05-23T16:19:16Z",
+      );
       process.exit(1);
     }
   } else {
     const detected = await findLastRealRowTimestamp();
     if (!detected) {
-      console.error("No existing rows in logs_requests - nothing to backfill against");
+      console.error(
+        "No existing rows in logs_requests - nothing to backfill against",
+      );
       process.exit(1);
     }
     startOfGap = detected;
     endOfGap = new Date();
-    console.warn("WARN: Using auto-detected window. If app is currently writing rows, this is likely wrong.");
+    console.warn(
+      "WARN: Using auto-detected window. If app is currently writing rows, this is likely wrong.",
+    );
     console.warn("      Use --from <iso> --to <iso> for explicit control.\n");
   }
 
-  console.log(`Gap window: ${startOfGap.toISOString()}  ->  ${endOfGap.toISOString()}`);
+  console.log(
+    `Gap window: ${startOfGap.toISOString()}  ->  ${endOfGap.toISOString()}`,
+  );
 
   const existing = await countBackfilledRowsInWindow(startOfGap, endOfGap);
   if (existing > 0) {
     if (DRY_RUN) {
-      console.warn(`Note: ${existing} backfilled rows already exist - a real run would abort here.\n`);
+      console.warn(
+        `Note: ${existing} backfilled rows already exist - a real run would abort here.\n`,
+      );
     } else {
       console.error(
         `Aborting: ${existing} backfilled rows already exist in this window.\n` +
-        `Delete them first to re-run:\n` +
-        `  DELETE FROM logs_requests WHERE created_at >= '${startOfGap.toISOString()}' AND is_tor IS NULL;`,
+          `Delete them first to re-run:\n` +
+          `  DELETE FROM logs_requests WHERE created_at >= '${startOfGap.toISOString()}' AND is_tor IS NULL;`,
       );
       process.exit(1);
     }
@@ -91,7 +103,9 @@ async function main(): Promise<void> {
     .filter((f) => f.startsWith("access.log"))
     .sort();
 
-  console.log(`Found ${files.length} nginx log files to scan in ${NGINX_LOG_DIR}`);
+  console.log(
+    `Found ${files.length} nginx log files to scan in ${NGINX_LOG_DIR}`,
+  );
 
   const enrichIp = buildIpEnrichment();
   const allRows: BackfilledRow[] = [];
@@ -153,7 +167,9 @@ async function main(): Promise<void> {
       return acc;
     }, {});
     console.log(`\nThreat level breakdown: ${JSON.stringify(threatBreakdown)}`);
-    console.log(`\nDry run complete. ${allRows.length} rows would be inserted. Re-run without --dry-run to commit.`);
+    console.log(
+      `\nDry run complete. ${allRows.length} rows would be inserted. Re-run without --dry-run to commit.`,
+    );
     await dbc.close();
     return;
   }
@@ -162,10 +178,14 @@ async function main(): Promise<void> {
   for (let i = 0; i < allRows.length; i += BATCH_SIZE) {
     const batch = allRows.slice(i, i + BATCH_SIZE);
     await bulkInsertBackfilledRows(batch);
-    console.log(`  inserted ${Math.min(i + BATCH_SIZE, allRows.length)}/${allRows.length}`);
+    console.log(
+      `  inserted ${Math.min(i + BATCH_SIZE, allRows.length)}/${allRows.length}`,
+    );
   }
 
-  console.log(`\nDone. ${allRows.length} backfilled rows written to logs_requests.`);
+  console.log(
+    `\nDone. ${allRows.length} backfilled rows written to logs_requests.`,
+  );
   await dbc.close();
 }
 

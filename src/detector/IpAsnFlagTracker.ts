@@ -1,75 +1,44 @@
-export type FlagScope = "ip" | "asn" | "asn_subnet";
+import { dbc } from "../helpers/database_connector.js";
+import { FlagSnapshot, type FlagScope } from "./FlagSnapshot.js";
+
+export interface FlagFilter {
+  ips?: string[];
+  asns?: number[];
+  subnets?: string[];
+}
 
 export class IpAsnFlagTracker {
-  private flags = new Map<string, number>();
-  private now: () => number;
+  async snapshotFlags(
+    filter: FlagFilter,
+    asOf: Date = new Date(),
+  ): Promise<FlagSnapshot> {
+    const getFlagsSql = `
+    SELECT scope_type, scope_value, flag_name, expires_at
+    FROM logs_flag_tracker
+    WHERE expires_at > $1
+    AND (
+      (scope_type = 'ip' AND scope_value = ANY($2))
+      OR (scope_type = 'asn' AND scope_value = ANY($3))
+      OR (scope_type = 'asn_subnet' AND scope_value = ANY($4))
+    )
+    `;
+    const rows = await dbc.query<{
+      scope_type: FlagScope;
+      scope_value: string;
+      flag_name: string;
+      expires_at: Date;
+    }>(getFlagsSql, [
+      asOf,
+      filter.ips ?? [],
+      (filter.asns ?? []).map(String),
+      filter.subnets ?? [],
+    ]);
 
-  constructor(now: () => number = Date.now) {
-    this.now = now;
-  }
-
-  setFlag(
-    scope_type: FlagScope,
-    scope_value: string | number,
-    flag_name: string,
-    expire_ms: number,
-  ): void {
-    const key = this.buildKey(scope_type, scope_value, flag_name);
-    const expiresAt = this.now() + expire_ms;
-    this.flags.set(key, expiresAt);
-  }
-
-  hasFlag(
-    scope_type: FlagScope,
-    scope_value: string | number,
-    flag_name: string,
-  ): boolean {
-    const key = this.buildKey(scope_type, scope_value, flag_name);
-    const expiresAt = this.flags.get(key);
-    if (expiresAt === undefined) return false;
-    if (this.now() >= expiresAt) {
-      // opportunistic cleanup keeps the Map from growing unboundedly between sweeps
-      this.flags.delete(key);
-      return false;
+    const flags = new Map<string, number>();
+    for (const row of rows) {
+      const key = `${row.scope_type}:${row.scope_value}:${row.flag_name}`;
+      flags.set(key, row.expires_at.getTime());
     }
-    return true;
-  }
-
-  flagTtl(
-    scope_type: FlagScope,
-    scope_value: string | number,
-    flag_name: string,
-  ): number {
-    const key = this.buildKey(scope_type, scope_value, flag_name);
-    const expiresAt = this.flags.get(key);
-    if (expiresAt === undefined) return 0;
-    const remaining = expiresAt - this.now();
-    return remaining > 0 ? remaining : 0;
-  }
-
-  clearFlag(
-    scope_type: FlagScope,
-    scope_value: string | number,
-    flag_name: string,
-  ): void {
-    const key = this.buildKey(scope_type, scope_value, flag_name);
-    this.flags.delete(key);
-  }
-
-  sweepExpiredFlags(): void {
-    const cutoff = this.now();
-    for (const [key, expiresAt] of this.flags) {
-      if (cutoff >= expiresAt) {
-        this.flags.delete(key);
-      }
-    }
-  }
-
-  private buildKey(
-    scope_type: FlagScope,
-    scope_value: string | number,
-    flag_name: string,
-  ): string {
-    return `${scope_type}:${scope_value}:${flag_name}`;
+    return new FlagSnapshot(flags, asOf.getTime());
   }
 }
