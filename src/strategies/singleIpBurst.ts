@@ -12,8 +12,8 @@ export const singleIpBurst: Strategy = {
     "per_ip_unique_paths",
     "per_ip_time_burst_sec",
   ],
-  flags_observed: ["recent_env_probe", "recent_credential_probe"],
-  flags_consumed: ["seen_in_subnet_spray", "seen_in_tor_distributed_scan"],
+  markers_observed: ["recent_env_probe", "recent_credential_probe"],
+  markers_consumed: ["seen_in_subnet_spray", "seen_in_tor_distributed_scan"],
 
   observe(req, metrics) {
     if (req.threat_level === "none") return null;
@@ -27,7 +27,7 @@ export const singleIpBurst: Strategy = {
   score(
     requestObservations,
     metrics,
-    ipAsnFlagTracker,
+    markerSnapshotInstance,
   ): StrategyScoreResult | null {
     const firstObs = requestObservations[0];
     const ip = String(firstObs.key);
@@ -41,7 +41,7 @@ export const singleIpBurst: Strategy = {
 
     // suppress if already converted to a campaign
     if (
-      ipAsnFlagTracker.hasFlag(
+      markerSnapshotInstance.hasMarker(
         "asn_subnet",
         subnet24(ip),
         "seen_in_subnet_spray",
@@ -51,7 +51,7 @@ export const singleIpBurst: Strategy = {
     }
     if (
       asn != null &&
-      ipAsnFlagTracker.hasFlag("asn", asn, "seen_in_tor_distributed_scan")
+      markerSnapshotInstance.hasMarker("asn", asn, "seen_in_tor_distributed_scan")
     ) {
       return null;
     }

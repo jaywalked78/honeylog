@@ -1,6 +1,6 @@
 import type { MetricsWithinWindow } from "../detector/metrics/MetricsWithinWindow.js";
 import type { HoneyRequest } from "../detector/types.js";
-import type { IpAsnFlagTracker } from "../detector/IpAsnFlagTracker.js";
+import { MarkerSnapshot } from "../detector/MarkerSnapshot.js";
 
 export interface RequestObservationFromStrategy {
   stream: string; // strategy id
@@ -20,8 +20,8 @@ export interface Strategy {
   default_campaign_type: string; // matches a catalog entry by id
   default_suppress_for_ms: number; // how long until the same identifer re-fires (Zeek SumStats style)
   metrics_required: readonly (keyof MetricsWithinWindow)[];
-  flags_observed: readonly string[];
-  flags_consumed: readonly string[];
+  markers_observed: readonly string[];
+  markers_consumed: readonly string[];
   // called once per request, returns a request observation or null if the strategy doesn't apply
   observe(
     req: HoneyRequest,
@@ -31,7 +31,7 @@ export interface Strategy {
   score(
     requestObservations: RequestObservationFromStrategy[],
     metrics: MetricsWithinWindow,
-    ipAsnFlagTracker: IpAsnFlagTracker,
+    markerSnapshotInstance: MarkerSnapshot,
   ): StrategyScoreResult | null;
   // used by routing policy to group strategies by identifer e.g. "single-ip-burst|ip=XX.XX.XX.XX"
   identifier_from(
