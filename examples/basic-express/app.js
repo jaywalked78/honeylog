@@ -20,7 +20,12 @@
 
 import express from "express";
 import path from "path";
-import { honey, initGeo, fetchTorExitNodes, startTorRefreshInterval } from "honeylog";
+import {
+  honey,
+  initGeo,
+  fetchTorExitNodes,
+  startTorRefreshInterval,
+} from "honeylog";
 import { pool } from "./db.js";
 
 // Optional: load MaxMind GeoLite2 databases for geo + ASN enrichment.

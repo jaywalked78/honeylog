@@ -112,6 +112,13 @@ const detectSource = (userAgent: string | undefined): Source => {
 
 // === THREAT DETECTION - Patterns imported from threatDefinitions.ts ===
 
+export interface ThreatDetectionInput {
+  url: string;
+  method: string;
+  body?: unknown;
+  userAgent?: string | null;
+}
+
 const SEVERITY_RANK: Record<ThreatLevel, number> = {
   none: 0,
   low: 1,
@@ -119,41 +126,37 @@ const SEVERITY_RANK: Record<ThreatLevel, number> = {
   high: 3,
 };
 
-const detectThreats = (req: Request): ThreatResult => {
+export const detectThreats = (input: ThreatDetectionInput): ThreatResult => {
   const signals: ThreatSignal[] = [];
+  const { url, method, body, userAgent } = input;
 
   // Path-based threats
-  const fullPath = req.originalUrl || req.path;
   for (const threat of PATH_THREATS) {
-    if (threat.pattern.test(fullPath)) {
+    if (threat.pattern.test(url)) {
       signals.push({
         category: "path",
         severity: threat.severity,
         description: threat.description,
-        matched: fullPath,
+        matched: url,
       });
     }
   }
 
   // Method-based threats
   for (const threat of METHOD_THREATS) {
-    if (req.method === threat.method) {
+    if (method === threat.method) {
       signals.push({
         category: "method",
         severity: threat.severity,
         description: threat.description,
-        matched: req.method,
+        matched: method,
       });
     }
   }
 
   // Body-based threats (stringify and scan)
-  if (
-    req.body &&
-    typeof req.body === "object" &&
-    Object.keys(req.body).length > 0
-  ) {
-    const bodyStr = JSON.stringify(req.body);
+  if (body && typeof body === "object" && Object.keys(body).length > 0) {
+    const bodyStr = JSON.stringify(body);
     for (const threat of BODY_THREATS) {
       if (threat.pattern.test(bodyStr)) {
         signals.push({
@@ -168,7 +171,7 @@ const detectThreats = (req: Request): ThreatResult => {
 
   // Also scan the URL for injection (query string attacks)
   for (const threat of BODY_THREATS) {
-    if (threat.pattern.test(fullPath)) {
+    if (threat.pattern.test(url)) {
       signals.push({
         category: "url",
         severity: threat.severity,
@@ -179,7 +182,7 @@ const detectThreats = (req: Request): ThreatResult => {
   }
 
   // User agent - no-agent is suspicious
-  if (!req.get("User-Agent")) {
+  if (!userAgent) {
     signals.push({
       category: "agent",
       severity: "low",
@@ -346,7 +349,12 @@ export function honey(options: HoneyOptions): RequestHandler {
       const ipSafe = VALID_IP.test(rawIp);
       const ip = ipSafe ? rawIp : "0.0.0.0";
 
-      const threats = detectThreats(req); // Run threat detection across path, method, body, and URL
+      const threats = detectThreats({
+        url: req.originalUrl || req.path,
+        method: req.method,
+        body: req.body,
+        userAgent: userAgent,
+      });
 
       // IP spoof overrides if detected (highest possible signal)
       if (!ipSafe) {
