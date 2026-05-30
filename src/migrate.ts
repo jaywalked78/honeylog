@@ -21,6 +21,12 @@ import type { PoolClient } from "pg";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.join(__dirname, "migrations");
 const SCHEMA = process.env.PSQL_SCHEMA || "tll";
+if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(SCHEMA)) {
+  console.error(
+    `Invalid PSQL_SCHEMA: "${SCHEMA}". Must match [a-zA-Z_][a-zA-Z0-9_]*`,
+  );
+  process.exit(1);
+}
 
 interface Migration {
   name: string;
@@ -329,11 +335,28 @@ async function reset() {
 // ==========================================================================
 // CLI - parse command, --to flag, and positional args
 // ==========================================================================
+function getArgValue(args: string[], name: string): string | null {
+  const equalsForm = args.find((arg) => arg.startsWith(`--${name}=`));
+  if (equalsForm !== undefined) return equalsForm.slice(`--${name}=`.length);
+  const spaceIndex = args.indexOf(`--${name}`);
+  if (spaceIndex !== -1) return args[spaceIndex + 1] ?? null;
+  return null;
+}
+
 const args = process.argv.slice(2);
 const command = args[0];
-const toIndex = args.indexOf("--to");
-const toTarget = toIndex !== -1 ? args[toIndex + 1] : null;
-const positionalArg = args[1] && args[1] !== "--to" ? args[1] : null;
+const toTarget = getArgValue(args, "to");
+const positionalArg =
+  args[1] && args[1] !== "--to" && !args[1].startsWith("--to=")
+    ? args[1]
+    : null;
+
+if (positionalArg !== null && toTarget !== null) {
+  console.error(
+    "Cannot combine count and --to arguments. Use one or the other.",
+  );
+  process.exit(1);
+}
 
 try {
   switch (command) {

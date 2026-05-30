@@ -58,10 +58,10 @@ async function resolveScanRange(
   if (fromDate !== null) {
     scanFrom = fromDate;
   } else {
-    const [rows] = await dbc.query<{ min: Date | null }>(
+    const [firstRow] = await dbc.query<{ min: Date | null }>(
       `SELECT MIN(created_at) AS min FROM logs_requests`,
     );
-    const earliest = rows?.min;
+    const earliest = firstRow?.min;
     if (earliest == null) {
       throw new Error("No rows found in logs_requests");
     }
@@ -250,6 +250,14 @@ async function runEpoch(
   return candidates;
 }
 
+function jsonReplacerForNonFinite(_key: string, value: unknown): unknown {
+  if (typeof value === "number" && !Number.isFinite(value)) {
+    if (Number.isNaN(value)) return "NaN";
+    return value > 0 ? "Infinity" : "-Infinity";
+  }
+  return value;
+}
+
 function renderOutput(
   candidates: CampaignCandidateFromStrategy[],
   format: string,
@@ -263,7 +271,7 @@ function renderOutput(
 
   if (format === "jsonl") {
     for (const candidate of sorted) {
-      console.log(JSON.stringify(candidate));
+      console.log(JSON.stringify(candidate, jsonReplacerForNonFinite));
     }
     return;
   }

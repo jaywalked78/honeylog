@@ -31,6 +31,7 @@ export const singleIpBurst: Strategy = {
   ): StrategyScoreResult | null {
     const firstObs = requestObservations[0];
     const ip = String(firstObs.key);
+    if (ip.includes(":")) return null;
     const req = firstObs.value as HoneyRequest;
     const asn = req.ip_location?.asn;
 

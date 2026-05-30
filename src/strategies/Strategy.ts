@@ -1,6 +1,6 @@
 import type { MetricsWithinWindow } from "../detector/metrics/MetricsWithinWindow.js";
 import type { HoneyRequest } from "../detector/types.js";
-import { MarkerSnapshot } from "../detector/MarkerSnapshot.js";
+import type { MarkerSnapshot } from "../detector/MarkerSnapshot.js";
 
 export interface RequestObservationFromStrategy {
   stream: string; // strategy id
