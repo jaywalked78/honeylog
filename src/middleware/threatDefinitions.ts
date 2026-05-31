@@ -115,6 +115,11 @@ export const BOT_PATTERNS: RegExp[] = [
   /check/i,
   /monitor/i,
   /survey/i,
+  // More signatures from production traffic
+  /CVE-\d{4}-\d+/i, // literal CVE id in UA (Cisco IOS XE implant scanners)
+  /libredtail/i, // libredtail-http exploit toolkit
+  /^okhttp\//i, // Java/Android HTTP client used by scanners
+  /Openwave|UCWEB/i, // ancient feature-phone UA - scanner spoof
 ];
 
 export const PATH_THREATS: PathThreat[] = [
@@ -162,9 +167,10 @@ export const PATH_THREATS: PathThreat[] = [
     severity: "high",
     description: "Java heap dump probe",
   },
-  // HIGH - git exposure (any .git path)
+  // HIGH - git exposure (any .git path, incl. .gitconfig/.gitignore/.gitattributes
+  // which have no word boundary after "git" so the bare /\.git\b rule missed them)
   {
-    pattern: /\/\.git\b/i,
+    pattern: /\/\.git(config|attributes|ignore|modules|keep)?\b/i,
     severity: "high",
     description: "git exposure probe",
   },
@@ -1197,12 +1203,184 @@ export const PATH_THREATS: PathThreat[] = [
     severity: "medium",
     description: "Next.js framework probe",
   },
+
+  // === Discovered from production traffic ===
+  // HIGH - ThinkPHP 5.x invokefunction RCE (distributed across many ASNs)
+  {
+    pattern: /invokefunction\b.*call_user_func_array/i,
+    severity: "high",
+    description: "ThinkPHP RCE probe (invokefunction)",
+  },
+  // HIGH - GCP/Firebase service-account & client-secret JSON (plain variants the
+  // existing serviceAccountKey/firebase-adminsdk rule does not cover)
+  {
+    pattern:
+      /\/(firebase|google-services|gcp-service-account|sa-key|sa-private-key|service-principal|keyfile|client_secret)\.json\b/i,
+    severity: "high",
+    description: "GCP/Firebase service key probe",
+  },
+  // HIGH - mailer/SMTP credential files (transactional-email API keys, SMTP creds)
+  {
+    pattern: /\/(mail|email|sendmail|nodemailer|mailer|smtp)(\.config)?\.(js|php|json)\b/i,
+    severity: "high",
+    description: "mailer/SMTP credential file probe",
+  },
+  // HIGH - Cisco IOS XE Web UI implant (CVE-2023-20198) - double-encoded webui_wsma_Http
+  {
+    pattern: /%2577eb%2575i|\/webui_wsma_Http/i,
+    severity: "high",
+    description: "Cisco IOS XE Web UI implant probe (CVE-2023-20198)",
+  },
+  // HIGH - Spring profile config (application-{prod,dev,staging}.yml/properties - DB creds, secrets)
+  {
+    pattern: /\/application-(dev|prod|production|staging|development|test|local)\.(ya?ml|properties)\b/i,
+    severity: "high",
+    description: "Spring profile config probe",
+  },
+  // HIGH - IaC secrets (Terraform vars, Vault token/password file)
+  {
+    pattern: /\.tfvars\b|\/\.vault-token\b|vault-pass\.txt/i,
+    severity: "high",
+    description: "IaC secret file probe (tfvars/vault token)",
+  },
+  // HIGH - VPN tunnel keys/config (OpenVPN, WireGuard, Tailscale, ZeroTier)
+  {
+    pattern: /\.ovpn\b|\/wg0\.conf\b|tailscaled\.state|zerotier-one\/(identity|authtoken)\.secret/i,
+    severity: "high",
+    description: "VPN tunnel key/config probe",
+  },
+  // HIGH - shell/DB history & credential files (psql/mysql history, my.cnf, pypirc, composer auth)
+  {
+    pattern: /\/\.(psql_history|mysql_history|my\.cnf|pypirc|composer-auth\.json)\b/i,
+    severity: "high",
+    description: "shell/DB history & credential file probe",
+  },
+  // HIGH - FTP/Docker credential dotfiles (.dockercfg = registry auth, .ftpconfig = FTP creds)
+  {
+    pattern: /\/\.(dockercfg|ftpconfig)\b|\/\.remote-sync\.json\b/i,
+    severity: "high",
+    description: "FTP/Docker credential dotfile probe",
+  },
+  // HIGH - IoT router RCE (TOTOLINK/Netgear goform, device.rsp command exec)
+  {
+    pattern: /\/device\.rsp\?opt=sys|\/goform\/(AdvSetMacMtuWan|setSysAdm|WifiBasicSet)/i,
+    severity: "high",
+    description: "IoT router RCE probe",
+  },
+  // MEDIUM - IaC/Helm/K8s manifests (Helm values, k8s secret manifests, Ansible playbooks)
+  {
+    pattern: /\/(values|template|skaffold|playbook)\.ya?ml\b|\/(k8s|helm)\/.*secret/i,
+    severity: "medium",
+    description: "IaC/Helm/K8s manifest probe",
+  },
+  // MEDIUM - CI/CD pipeline config (GitHub Actions, GitLab CI, Jenkins, CodeBuild, Cloud Build)
+  {
+    pattern:
+      /\/(\.github\/workflows\/|\.gitlab-ci\.yml|\.drone\.yml|bitbucket-pipelines\.yml|azure-pipelines\.yml|Jenkinsfile|cloudbuild\.ya?ml|buildspec\.ya?ml|\.circleci\/)/i,
+    severity: "medium",
+    description: "CI/CD pipeline config probe",
+  },
+  // MEDIUM - HashiCorp Consul/Vault/Nomad agent API (cluster secrets, seal status)
+  {
+    pattern:
+      /\/v1\/(sys\/(seal-status|health|init|mounts)|agent\/(self|services|members|metrics)|status\/(leader|peers))\b/i,
+    severity: "medium",
+    description: "Consul/Vault/Nomad agent API probe",
+  },
+  // MEDIUM - open redirect / SSRF via absolute-URL redirect parameter (relative values do not match)
+  {
+    pattern: /[?&](url|redirect|redirect_uri|goto|next|dest|destination|return|returnurl|continue)=(https?(:|%3a)|\/\/|%2f%2f)/i,
+    severity: "medium",
+    description: "open redirect / SSRF parameter probe",
+  },
+  // MEDIUM - source map disclosure (leaks original JS/CSS source)
+  {
+    pattern: /\.(js|css|mjs|cjs)\.map\b/i,
+    severity: "medium",
+    description: "source map disclosure probe",
+  },
+  // MEDIUM - webroot source archive (full site source in a zip/tarball)
+  {
+    pattern: /\/(www|web|webroot|public_html|htdocs|wwwroot|source|src|release|html)\.(zip|tar\.gz|tgz|tar|rar|7z|gz)\b/i,
+    severity: "medium",
+    description: "webroot source archive probe",
+  },
+  // MEDIUM - Spring Boot 1.x Actuator bare endpoints (no /actuator/ prefix)
+  {
+    pattern: /^\/(api\/)?(configprops|threaddump|beans|mappings|httptrace|auditevents|scheduledtasks|env)(?:\?|$)/i,
+    severity: "medium",
+    description: "Spring Actuator bare endpoint probe",
+  },
+  // MEDIUM - JetBrains IDE config (.idea/dataSources.local.xml holds DB creds)
+  {
+    pattern: /\/\.idea\//i,
+    severity: "medium",
+    description: "JetBrains IDE config probe",
+  },
+  // MEDIUM - Go pprof debug endpoint (heap/goroutine/cmdline disclosure)
+  {
+    pattern: /\/debug\/pprof/i,
+    severity: "medium",
+    description: "Go pprof debug endpoint probe",
+  },
+  // MEDIUM - WHM/cPanel proxy login
+  {
+    pattern: /___proxy_subdomain_whm|\/whm\b/i,
+    severity: "medium",
+    description: "WHM/cPanel proxy login probe",
+  },
+  // MEDIUM - AWS/Azure client config JS (Amplify aws-exports leaks pool IDs/endpoints)
+  {
+    pattern: /\/aws[-.]?(exports|config)\.js\b|\/azure\.json\b/i,
+    severity: "medium",
+    description: "AWS/Azure client config probe",
+  },
+  // MEDIUM - GraphQL endpoint discovery
+  {
+    pattern: /\/graphql\b/i,
+    severity: "medium",
+    description: "GraphQL endpoint probe",
+  },
+  // MEDIUM - Rundeck automation API
+  {
+    pattern: /\/rundeck\b/i,
+    severity: "medium",
+    description: "Rundeck API probe",
+  },
+  // MEDIUM - app debug log files (npm/yarn/pnpm/firebase/php debug logs)
+  {
+    pattern: /\/(npm-debug|yarn-error|pnpm-debug|firebase-debug|php-error|php_error)\.log\b/i,
+    severity: "medium",
+    description: "app debug log file probe",
+  },
+  // LOW - login-page enumeration (framework sign-in path variants; bare /login excluded to avoid SPA false positives)
+  {
+    pattern: /\/(signin|user\/login|users\/sign_in|account\/login|manage\/account\/login|showLogin\.cc)\b/i,
+    severity: "low",
+    description: "login page enumeration probe",
+  },
+  // LOW - DNS-over-HTTPS / DNS-tunnel query on bare root (prefixed forms caught above)
+  {
+    pattern: /^\/\?(dns|name)=[A-Za-z0-9_%+-]{10,}/i,
+    severity: "low",
+    description: "DoH/DNS-tunnel query probe",
+  },
 ];
 
 export const METHOD_THREATS: MethodThreat[] = [
   { method: "PROPFIND", severity: "medium", description: "WebDAV scan" },
   { method: "TRACE", severity: "high", description: "XST attack vector" },
   { method: "CONNECT", severity: "high", description: "open proxy test" },
+  {
+    method: "PRI",
+    severity: "medium",
+    description: "HTTP/2 prior-knowledge / smuggling probe",
+  },
+  {
+    method: "SSTP_DUPLEX_POST",
+    severity: "low",
+    description: "Microsoft SSTP VPN handshake probe",
+  },
 ];
 
 export const BODY_THREATS: BodyThreat[] = [
@@ -1361,5 +1539,23 @@ export const BODY_THREATS: BodyThreat[] = [
       /%ADd\+(allow_url_include|auto_prepend_file|cgi\.force_redirect|disable_functions)/i,
     severity: "high",
     description: "PHP-CGI argument injection payload (CVE-2024-4577)",
+  },
+  // Cryptominer agent signature (XMRig - often delivered in a malformed method line)
+  {
+    pattern: /XMRig\//i,
+    severity: "high",
+    description: "cryptominer agent signature (XMRig)",
+  },
+  // Mirai/Gafgyt/NjRAT botnet C2 check-in (pipe-delimited |'|'| beacon)
+  {
+    pattern: /\|'\|'\|/,
+    severity: "high",
+    description: "botnet C2 check-in beacon (pipe-delimited)",
+  },
+  // root/default credential POST (credential stuffing with a root user)
+  {
+    pattern: /"(user(name)?|login)"\s*:\s*"root"\b/i,
+    severity: "low",
+    description: "root/default credential POST probe",
   },
 ];

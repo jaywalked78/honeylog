@@ -181,6 +181,19 @@ export const detectThreats = (input: ThreatDetectionInput): ThreatResult => {
     }
   }
 
+  // Also scan the method line - malformed methods carry malware signatures
+  // (XMRig stratum JSON-RPC, Mirai/NjRAT |'|'| beacons) instead of GET/POST
+  for (const threat of BODY_THREATS) {
+    if (threat.pattern.test(method)) {
+      signals.push({
+        category: "method",
+        severity: threat.severity,
+        description: threat.description,
+      });
+      threat.pattern.lastIndex = 0;
+    }
+  }
+
   // User agent - no-agent is suspicious
   if (!userAgent) {
     signals.push({
