@@ -193,6 +193,13 @@ export const PATH_THREATS: PathThreat[] = [
     severity: "high",
     description: "config/backup file probe (encoded extension bypass)",
   },
+  // HIGH - double-URL-encoded path traversal (%252e = encoded %2e = encoded '.') - layered encoding to evade ../ filters
+  // Sample: /%252e%252e/
+  {
+    pattern: /%252e/i,
+    severity: "high",
+    description: "double-encoded path traversal",
+  },
   // HIGH - Cisco IOS privilege-15 EXEC RCE (libwww-perl scanners hit /level/15/exec/-/sh/run/CR for running-config disclosure)
   {
     pattern: /\/level\/\d+\/exec\b/i,
@@ -475,8 +482,9 @@ export const PATH_THREATS: PathThreat[] = [
     description: "AI service credential directory probe",
   },
   // HIGH - generic PHP config files (DB credentials, framework configs)
+  // env-suffixed variants too: config.dev.php, database.local.php, settings.prod.php
   {
-    pattern: /\/(config|settings|database|db|configuration)\.php\b/i,
+    pattern: /\/(config|settings|database|db|configuration)(\.[\w-]+)?\.php\b/i,
     severity: "high",
     description: "generic PHP config file probe",
   },
@@ -500,7 +508,7 @@ export const PATH_THREATS: PathThreat[] = [
   },
   // HIGH - GCP service account key (contains private keys for GCP API access)
   {
-    pattern: /\/(serviceAccountKey|(firebase-|google-)?service-account|firebase-adminsdk)\.json\b/i,
+    pattern: /\/(serviceAccountKey|(firebase-|google-)?service-account(-key)?|firebase-adminsdk)\.json\b/i,
     severity: "high",
     description: "GCP/Firebase service account key probe",
   },
@@ -715,7 +723,7 @@ export const PATH_THREATS: PathThreat[] = [
     description: "VPN/remote access probe",
   },
   {
-    pattern: /global-protect|ssl-vpn\/prelogin|\/sonicos\/|\/sonicui\//i,
+    pattern: /global-protect|ssl-vpn\/(prelogin|login\.esp)|\/sonicos\/|\/sonicui\//i,
     severity: "medium",
     description: "Palo Alto/SonicWall VPN probe",
   },
@@ -1289,7 +1297,7 @@ export const PATH_THREATS: PathThreat[] = [
   },
   // MEDIUM - open redirect / SSRF via absolute-URL redirect parameter (relative values do not match)
   {
-    pattern: /[?&](url|redirect|redirect_uri|goto|next|dest|destination|return|returnurl|continue)=(https?(:|%3a)|\/\/|%2f%2f)/i,
+    pattern: /[?&](url|redirect|redirect_uri|goto|next|dest|destination|return|returnurl|continue|u)=(https?(:|%3a)|\/\/|%2f%2f)/i,
     severity: "medium",
     description: "open redirect / SSRF parameter probe",
   },
@@ -1310,6 +1318,59 @@ export const PATH_THREATS: PathThreat[] = [
     pattern: /^\/(api\/)?(configprops|threaddump|beans|mappings|httptrace|auditevents|scheduledtasks|env)(?:\?|$)/i,
     severity: "medium",
     description: "Spring Actuator bare endpoint probe",
+  },
+  // HIGH - Jupyter Notebook/Lab unauthenticated API (kernel exec = RCE)
+  // Sample: GET /api/kernels, /api/kernelspecs, /api/contents/
+  {
+    pattern: /\/api\/(kernels|kernelspecs|contents)(\/|\b)/i,
+    severity: "high",
+    description: "Jupyter unauthenticated API probe",
+  },
+  // HIGH - MLflow tracking server (CVE-2023-6014 auth bypass, CVE-2024-37052+ model deserialization RCE)
+  // and Milvus vector DB. Sample: POST /api/2.0/mlflow/experiments/search, /api/v1/milvus/version
+  {
+    pattern: /\/api\/2\.0\/mlflow\/|\/milvus\//i,
+    severity: "high",
+    description: "MLflow / Milvus ML-infra probe",
+  },
+  // MEDIUM - Ollama unauthenticated LLM API (model exfil/abuse). /api/tags is somewhat generic
+  // but only fires alongside /generate /pull here; revisit if a consumer reports a false positive.
+  {
+    pattern: /\/api\/(tags|generate|pull)\b/i,
+    severity: "medium",
+    description: "Ollama LLM API probe",
+  },
+  // MEDIUM - Docker Registry v2 API enumeration (catalog/manifest scraping)
+  {
+    pattern: /^\/v2\/?$/i,
+    severity: "medium",
+    description: "Docker Registry v2 enumeration",
+  },
+  // MEDIUM - botnet/agent C2 enumeration (heartbeat/machine/p2p endpoints from miner & RAT agents)
+  // Sample: /api/v1/heartbeat, /api/v1.3/machine, /api/p2p, /apiv2/server/info
+  {
+    pattern: /\/api(v2)?\/(v[\d.]+\/)?(machine|heartbeat|p2p)\b|\/apiv2\/server\/info/i,
+    severity: "medium",
+    description: "botnet/agent C2 enumeration probe",
+  },
+  // HIGH - secrets exposed via API path (settings/keys/secrets/credentials JSON/YAML)
+  // Sample: /api/keys.json, /api/secrets.json, /api/settings.yml
+  {
+    pattern: /\/api\/(settings|keys|secrets|credentials)\.(json|ya?ml)\b/i,
+    severity: "high",
+    description: "API secrets file probe",
+  },
+  // MEDIUM - Magento REST recon (storeConfigs precedes CVE-2022-24086 RCE chains)
+  {
+    pattern: /\/rest\/V1\/store\/storeConfigs/i,
+    severity: "medium",
+    description: "Magento REST recon probe",
+  },
+  // MEDIUM - Rails dev-mode info disclosure (/rails/info/properties exposes env + gem versions)
+  {
+    pattern: /\/rails\/info\/(properties|routes)/i,
+    severity: "medium",
+    description: "Rails info disclosure probe",
   },
   // MEDIUM - JetBrains IDE config (.idea/dataSources.local.xml holds DB creds)
   {
