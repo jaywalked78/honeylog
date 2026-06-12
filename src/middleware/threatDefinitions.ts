@@ -545,6 +545,24 @@ export const PATH_THREATS: PathThreat[] = [
     severity: "high",
     description: "Rails credential/config probe",
   },
+  // HIGH - generic credentials YAML (k8s/CI secrets, DB creds) - plain credentials.yaml/.yml beyond the Rails .enc variant
+  {
+    pattern: /\/credentials\.ya?ml\b/i,
+    severity: "high",
+    description: "credentials YAML probe",
+  },
+  // HIGH - npm/yarn registry config (.npmrc/.yarnrc hold registry auth tokens, _authToken)
+  {
+    pattern: /\/\.(npmrc|yarnrc)(\.[\w-]+)?\b/i,
+    severity: "high",
+    description: "npm/yarn registry auth config probe",
+  },
+  // HIGH - node-config secrets (config/{default,production,local,...}.json hold DB creds and API keys)
+  {
+    pattern: /\/config\/(default|production|local|development|test|custom-environment-variables)\.json\b/i,
+    severity: "high",
+    description: "node-config secrets probe",
+  },
   // HIGH - Kubernetes admin config (.kube/config = full cluster admin)
   {
     pattern: /\/\.kube\/(config|cache)|\/kubeconfig\b/i,
@@ -718,7 +736,7 @@ export const PATH_THREATS: PathThreat[] = [
     description: "server info probe",
   },
   {
-    pattern: /\/remote\/login|\/vpn|\/sslvpn/i,
+    pattern: /\/remote\/login|\/vpn|\/sslvpn|\/sslmgr\b/i,
     severity: "medium",
     description: "VPN/remote access probe",
   },
@@ -1223,7 +1241,7 @@ export const PATH_THREATS: PathThreat[] = [
   // existing serviceAccountKey/firebase-adminsdk rule does not cover)
   {
     pattern:
-      /\/(firebase|google-services|gcp-service-account|sa-key|sa-private-key|service-principal|keyfile|client_secret)\.json\b/i,
+      /\/(firebase|google-services|gcp-service-account|sa-key|sa-private-key|service-principal|keyfile|client_secret|service_key|google[-_]key|gcp[-_]key)\.json\b/i,
     severity: "high",
     description: "GCP/Firebase service key probe",
   },
@@ -1284,9 +1302,15 @@ export const PATH_THREATS: PathThreat[] = [
   // MEDIUM - CI/CD pipeline config (GitHub Actions, GitLab CI, Jenkins, CodeBuild, Cloud Build)
   {
     pattern:
-      /\/(\.github\/workflows\/|\.gitlab-ci\.yml|\.drone\.yml|bitbucket-pipelines\.yml|azure-pipelines\.yml|Jenkinsfile|cloudbuild\.ya?ml|buildspec\.ya?ml|\.circleci\/)/i,
+      /\/(\.github\/workflows\/|github-actions\.ya?ml|\.gitlab-ci\.yml|\.drone\.yml|bitbucket-pipelines\.yml|azure-pipelines\.yml|Jenkinsfile|cloudbuild\.ya?ml|buildspec\.ya?ml|\.circleci\/)/i,
     severity: "medium",
     description: "CI/CD pipeline config probe",
+  },
+  // MEDIUM - Atlassian Application Links recon (Jira/Confluence applinks manifest, SSRF precursor CVE-2019-8451)
+  {
+    pattern: /\/rest\/applinks\//i,
+    severity: "medium",
+    description: "Atlassian Application Links recon probe",
   },
   // MEDIUM - HashiCorp Consul/Vault/Nomad agent API (cluster secrets, seal status)
   {
