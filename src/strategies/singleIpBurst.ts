@@ -12,7 +12,10 @@ export const singleIpBurst: Strategy = {
     "per_ip_unique_paths",
     "per_ip_time_burst_sec",
   ],
-  markers_observed: ["recent_env_probe", "recent_credential_probe"],
+  // Pure consumer in alpha. Its producer markers (recent_env_probe, recent_credential_probe) are
+  // deferred until something consumes them - they're content-conditional, so they need the predicate
+  // mechanism noted on Strategy.markers_observed before they can be re-added.
+  markers_observed: [],
   markers_consumed: ["seen_in_subnet_spray", "seen_in_tor_distributed_scan"],
 
   observe(req, metrics) {
