@@ -120,6 +120,11 @@ export const BOT_PATTERNS: RegExp[] = [
   /libredtail/i, // libredtail-http exploit toolkit
   /^okhttp\//i, // Java/Android HTTP client used by scanners
   /Openwave|UCWEB/i, // ancient feature-phone UA - scanner spoof
+  // Self-identifying scanning tools (from production traffic)
+  /opendirme|credhunt/i, // open-directory credential-hunting scanner (.env/secrets probes)
+  /fingerprint-scan/i, // fingerprinting scanner (bare "scan" token; /scanner/i misses it)
+  /SecurityAudit/i, // security-audit scanner (distinct from /SecurityScanner\b/)
+  /CyberConvoyScout/i, // CyberConvoy recon/scanning service
 ];
 
 export const PATH_THREATS: PathThreat[] = [
@@ -1351,9 +1356,9 @@ export const PATH_THREATS: PathThreat[] = [
     description: "Jupyter unauthenticated API probe",
   },
   // HIGH - MLflow tracking server (CVE-2023-6014 auth bypass, CVE-2024-37052+ model deserialization RCE)
-  // and Milvus vector DB. Sample: POST /api/2.0/mlflow/experiments/search, /api/v1/milvus/version
+  // and Milvus vector DB. Sample: POST /ajax-api/2.0/mlflow/experiments/search, /api/v1/milvus/version
   {
-    pattern: /\/api\/2\.0\/mlflow\/|\/milvus\//i,
+    pattern: /\/(api|ajax-api)\/2\.0\/mlflow\/|\/milvus\//i,
     severity: "high",
     description: "MLflow / Milvus ML-infra probe",
   },
@@ -1449,6 +1454,104 @@ export const PATH_THREATS: PathThreat[] = [
     pattern: /^\/\?(dns|name)=[A-Za-z0-9_%+-]{10,}/i,
     severity: "low",
     description: "DoH/DNS-tunnel query probe",
+  },
+  // HIGH - semicolon path-normalization traversal bypass (..;/ reaches files behind Tomcat/Spring/nginx path filters)
+  // Sample: GET /..;/env.js, GET /..;/env.prod.js
+  {
+    pattern: /\/\.\.;\//,
+    severity: "high",
+    description: "semicolon path traversal bypass",
+  },
+  // HIGH - pearcmd.php LFI-to-RCE chain (config-create writes a webshell via the bundled PEAR CLI)
+  // Sample: GET /index.php?lang=../../../../usr/local/lib/php/pearcmd&+config-create+/&/<?echo...
+  {
+    pattern: /\bpearcmd\b/i,
+    severity: "high",
+    description: "PHP pearcmd LFI/RCE probe",
+  },
+  // HIGH - Joomla com_jce / simple-file-upload arbitrary upload RCE
+  // Sample: GET /administrator/components/com_jce/jce.xml, GET /plugins/editors/jce/jce.xml
+  {
+    pattern: /\/(administrator\/components\/com_jce|plugins\/editors\/jce|modules\/mod_simplefileupload)/i,
+    severity: "high",
+    description: "Joomla com_jce upload RCE probe",
+  },
+  // HIGH - PM2 ecosystem config (embeds env vars, DB creds, API keys)
+  // Sample: GET /ecosystem.config.js
+  {
+    pattern: /\/ecosystem\.config\.(c?js|json)\b/i,
+    severity: "high",
+    description: "PM2 ecosystem config probe",
+  },
+  // HIGH - secret env files (Cloudflare Workers/Wrangler .dev.vars, dotenv variant)
+  // Sample: HEAD /.dev.vars, GET /.dotenv
+  {
+    pattern: /\/\.(dev\.vars|dotenv)\b/i,
+    severity: "high",
+    description: "secret env file probe (dev.vars/dotenv)",
+  },
+  // HIGH - named PHP webshell drops (uploaded backdoors with well-known toolkit filenames)
+  // Sample: GET /wso.php, GET /alfa.php, GET /b1ack.php, GET /xminie.php
+  {
+    pattern: /\/(wso|alfa|b1ack|mini|w3lls|c99|r57|b374k|weevely|indoxploit|priv8|0byt3|gel4y|smevk|p0wny|xminie)\.php\b/i,
+    severity: "high",
+    description: "named PHP webshell probe",
+  },
+  // HIGH - generic *shell*.php webshell drop names
+  // Sample: GET /dostshell.php, GET /dragonshell.php, GET /shell20211028.php
+  {
+    pattern: /\/[\w-]*shell[\w-]*\.php\b/i,
+    severity: "high",
+    description: "PHP webshell drop probe (shell in filename)",
+  },
+  // MEDIUM - DICOM/PACS medical-imaging server (WADO/QIDO/STOW expose patient studies; PHI disclosure)
+  // Sample: GET /wado-rs/studies, GET /dicom-web/studies
+  {
+    pattern: /\/(wado|wado-rs|qido-rs|stow-rs|dicom-web|dicomweb)(\/|\b)/i,
+    severity: "medium",
+    description: "DICOM/PACS imaging server probe",
+  },
+  // MEDIUM - Joomla administrator backend / version fingerprint (manifests/files/joomla.xml leaks exact version)
+  // Sample: GET /administrator/manifests/files/joomla.xml, GET /administrator/index.php
+  {
+    pattern: /\/administrator\/(index2?\.php|components|manifests|modules|templates|language)\b/i,
+    severity: "medium",
+    description: "Joomla administrator probe",
+  },
+  // MEDIUM - FrontPage/SharePoint _vti extensions (legacy server probe, info disclosure)
+  // Sample: POST /_vti_logs, POST /_vti_srv_conf
+  {
+    pattern: /\/_vti_/i,
+    severity: "medium",
+    description: "FrontPage/SharePoint _vti probe",
+  },
+  // MEDIUM - SPIP CMS (CVE-2023-27372 unauth RCE via spip_pass)
+  // Sample: GET /spip.php, GET /spip.php?page=spip_pass
+  {
+    pattern: /\/spip\.php\b/i,
+    severity: "medium",
+    description: "SPIP CMS RCE probe (CVE-2023-27372)",
+  },
+  // MEDIUM - Werkzeug/Flask interactive debugger console (RCE if PIN bypassed/disabled)
+  // Sample: GET /?__debugger__=yes&cmd=resource&f=debugger.js
+  {
+    pattern: /__debugger__=/i,
+    severity: "medium",
+    description: "Werkzeug debugger console probe",
+  },
+  // MEDIUM - Pandora FMS console (multiple unauth RCE CVEs)
+  // Sample: GET /pandora_console/
+  {
+    pattern: /\/pandora_console(\/|\b)/i,
+    severity: "medium",
+    description: "Pandora FMS console probe",
+  },
+  // LOW - Drupal/CMS version fingerprint (CHANGELOG.txt reveals exact version for targeted CVE)
+  // Sample: GET /CHANGELOG.txt
+  {
+    pattern: /\/CHANGELOG\.txt\b/i,
+    severity: "low",
+    description: "CMS version fingerprint (CHANGELOG)",
   },
 ];
 
@@ -1642,5 +1745,41 @@ export const BODY_THREATS: BodyThreat[] = [
     pattern: /"(user(name)?|login)"\s*:\s*"root"\b/i,
     severity: "low",
     description: "root/default credential POST probe",
+  },
+  // inline PHP code injection / webshell plant (CVE-2024-4577 chains drop a raw <?php ... ?> loader)
+  {
+    pattern: /<\?php\b/i,
+    severity: "high",
+    description: "inline PHP code injection (webshell plant)",
+  },
+  // PHP command-execution primitives in body/URL (narrow set to avoid bare system()/exec() JS false positives)
+  {
+    pattern: /\b(shell_exec|passthru|proc_open|popen|pcntl_exec)\s*\(/i,
+    severity: "high",
+    description: "PHP command-execution function (webshell exec)",
+  },
+  // AndroxGh0st-family scanner marker - the "0x[]" KEY is the stable signature (value rotates: androxgh0st, GNIXOER, DTAB)
+  {
+    pattern: /"0x\[\]"/,
+    severity: "high",
+    description: "AndroxGh0st-family scanner marker (0x[] key)",
+  },
+  // Cisco IOS XE WSMA execCLI RCE - SOAP runs IOS commands (sh run = running-config exfil), pairs with CVE-2023-20198
+  {
+    pattern: /urn:cisco:wsma|<execCLI\b/i,
+    severity: "high",
+    description: "Cisco WSMA execCLI RCE (router config exfil)",
+  },
+  // appliance NMS command-exec RCE - vendor handleMessage runs shell via <commandexec>/<reqandres> XML tags
+  {
+    pattern: /<commandexec>|<reqandres>/i,
+    severity: "high",
+    description: "appliance command-exec RCE (commandexec/reqandres tags)",
+  },
+  // GraphQL introspection scan - __schema dump enumerates the API surface (also hits /query, /v1/graphql the path rule misses)
+  {
+    pattern: /__schema\s*\{|\bIntrospectionQuery\b/i,
+    severity: "low",
+    description: "GraphQL introspection scan",
   },
 ];
