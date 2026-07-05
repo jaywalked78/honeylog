@@ -2,6 +2,10 @@ import type { Strategy, StrategyScoreResult } from "./Strategy.js";
 import { sigmoid, subnet24 } from "../utils/strategyHelpers.js";
 import type { HoneyRequest } from "../detector/types.js";
 
+const SECONDS_PER_DAY = 86400;
+const PERSISTENCE_MIDPOINT_DAYS = 7;
+const PERSISTENCE_STEEPNESS_DAYS = 3;
+
 export const singleIpBurst: Strategy = {
   id: "single-ip-burst",
   related_strategy_tags: ["volume_anomaly", "credential_harvester_family"],
@@ -65,8 +69,13 @@ export const singleIpBurst: Strategy = {
     const diversityScore = sigmoid((uniquePaths - 80) / 40); // .5 at uniquePaths = 80, approx .95 at uniquePaths = 200
     const burstScore =
       burstSec < 60 ? 1 : Math.max(0, 1 - (burstSec - 60) / 540); // 1 if <60s, decays to 0 at 10 min
+    const spanDays = Number.isFinite(burstSec) ? burstSec / SECONDS_PER_DAY : 0;
+    const persistenceScore = sigmoid(
+      (spanDays - PERSISTENCE_MIDPOINT_DAYS) / PERSISTENCE_STEEPNESS_DAYS,
+    );
+    const timeScore = Math.max(burstScore, persistenceScore);
     const confidence =
-      volumeScore * 0.4 + diversityScore * 0.4 + burstScore * 0.2;
+      volumeScore * 0.4 + diversityScore * 0.4 + timeScore * 0.2;
 
     return {
       confidence,
@@ -77,6 +86,9 @@ export const singleIpBurst: Strategy = {
         volumeScore,
         diversityScore,
         burstScore,
+        spanDays,
+        persistenceScore,
+        timeScore,
       },
     };
   },
