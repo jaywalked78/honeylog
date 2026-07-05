@@ -1563,6 +1563,247 @@ export const PATH_THREATS: PathThreat[] = [
     severity: "low",
     description: "CMS version fingerprint (CHANGELOG)",
   },
+
+  // HIGH - env-secret files the dotfile rule misses: no leading dot, odd suffix, or
+  // sub-path (env.production, .env1, set_env.sh, environment.prod.ts, manage/env).
+  // Requires env be delimited so envelope/inventory/prevent do NOT match.
+  // Sample: GET /env.production, GET /.env1, GET /wp-env.php, GET /manage/env
+  {
+    pattern: /[\/._-]env(?:ironment)?(?:[._\-\d\/]|$)/i,
+    severity: "high",
+    description: "env-secret file probe (non-dot/suffix variant)",
+  },
+  // HIGH - config/settings/secrets data files (config.dev.json, settings.json,
+  // database.yaml, keys.json, vault.json, parameters.yaml)
+  {
+    pattern: /\/(config(uration|s)?|settings|secrets?|creds|credentials|keys|tokens?|vault|database|db|deploy(ment)?|application|parameters)(\.[\w-]+)?\.(json|ya?ml|ini|toml|xml|conf|cfg|txt|properties)\b/i,
+    severity: "high",
+    description: "config/secrets data file probe",
+  },
+  // MEDIUM - files under a sensitive config/secrets/infra directory
+  // Sample: GET /config/app.php, GET /ssl/server.pem, GET /ansible/group_vars/all/vault.yml
+  {
+    pattern: /\/(config|configs|conf|settings|secret|secrets|credentials|creds|private|keys|ssl|certs?|ansible|terraform|k8s|kubernetes|helm|manifests|tekton|salt|pillar|jenkins)\/[\w.\/-]*\.(php|py|rb|js|ts|json|ya?ml|ini|toml|xml|properties|conf|cfg|env|key|pem|crt|cert|pfx|p12|jks|tf|sls|txt|log|sql)\b/i,
+    severity: "medium",
+    description: "sensitive-directory file probe",
+  },
+  // HIGH - mailer/ESP credential probe (SendGrid/Mailgun/Mandrill API keys). Left
+  // delimiter not trailing \b so sendgrid_backup.zip (underscore is a word char) matches.
+  // Sample: GET /sendgrid.php, GET /config/mailgun.php, GET /sendgrid_backup.zip
+  {
+    pattern: /[\/._-](sendgrid|mailgun|mandrill|postmark|mailjet|swiftmailer|phpmailer|mailhog|mailcatcher|smtp4dev|amazon[_-]?ses|aws[_-]?ses)/i,
+    severity: "high",
+    description: "mailer/ESP credential probe",
+  },
+  // HIGH - cloud credential paths in non-dotfile form (/aws/credentials, /credentials/aws.txt)
+  {
+    pattern: /(aws|amazon|azure|gcp|gcloud|google|alibaba|oci|digitalocean)[._\/-]?cred(ential)?s?\b|\/cred(ential)?s?(\.(txt|json|ya?ml|py|csv|ini)|\/)/i,
+    severity: "high",
+    description: "cloud credential path probe (non-dotfile)",
+  },
+  // HIGH - private key / certificate / keystore files by extension
+  // Sample: GET /private_key.pem, GET /keystore.jks, GET /tls.crt
+  {
+    pattern: /\.(pem|pfx|p12|jks|keystore|key|crt|cert|csr|der)(?:\?|$)/i,
+    severity: "high",
+    description: "private key/certificate/keystore probe",
+  },
+  // HIGH - Java WEB-INF/META-INF disclosure (web.xml, context.xml, MANIFEST.MF)
+  {
+    pattern: /\/(WEB-INF|META-INF)\//i,
+    severity: "high",
+    description: "Java WEB-INF/META-INF disclosure probe",
+  },
+  // MEDIUM - Tomcat/Java server.xml (connector config, keystore passwords)
+  {
+    pattern: /\/server\.xml\b/i,
+    severity: "medium",
+    description: "Tomcat server.xml probe",
+  },
+  // HIGH - Django settings-package + Rails secret initializers/environments
+  // Sample: GET /settings/production.py, GET /config/initializers/devise.rb, GET /config/environments/production.rb
+  {
+    pattern: /\/settings\/[\w]+\.py\b|\/config\/(initializers|environments)\/|\/(local_settings|secret_key|credentials)\.py\b|\/db\/(seeds|schema)\.rb\b|\/config\/environment\.rb\b/i,
+    severity: "high",
+    description: "Django/Rails settings probe",
+  },
+  // MEDIUM - Spring/Java resource configs + .properties secrets
+  // Sample: GET /src/main/resources/secrets.properties, GET /database.properties, GET /src/main/resources/bootstrap-prod.yml
+  {
+    pattern: /\/src\/main\/resources\/|\/(application|bootstrap|spring|jasypt|hibernate|jdbc|datasource|config|database|db|secrets?|smtp|mail|aws|cloud)([._-][\w-]+)?\.properties\b/i,
+    severity: "medium",
+    description: "Spring/Java resource config probe",
+  },
+  // MEDIUM - IaC / K8s / Ansible / Terraform / Salt manifests. Bare "inventory"
+  // deliberately excluded (legit route); /inventory.yml stays uncaught on purpose.
+  // Sample: GET /k8s/deployment.yaml, GET /terraform/variables.tf, GET /pillar/secrets.sls
+  {
+    pattern: /\/(kubernetes|k8s)[._\/-]|\/helm(file)?\b|kustomization\.ya?ml|\/(group_vars|host_vars)\/|\/ansible(\.cfg|\/)|\/playbooks?\/|\.(tf|tfvars|hcl|sls)(?:\?|$)|\/pillar\//i,
+    severity: "medium",
+    description: "IaC/K8s/Ansible/Terraform manifest probe",
+  },
+  // MEDIUM - PaaS deploy configs (Procfile, wrangler.toml, vercel.json, .buildkite/*)
+  {
+    pattern: /\/(Procfile(\.\w+)?|render\.ya?ml|railway\.toml|fly\.toml|heroku\.yml|vercel\.json|netlify\.toml|scalingo\.json|now\.json|wrangler\.toml|appspec\.ya?ml|circle\.yml|drone\.ya?ml|\.woodpecker\.yml)\b|\/\.(vercel|netlify|wrangler|buildkite|semaphore|drone)\//i,
+    severity: "medium",
+    description: "PaaS deploy config probe",
+  },
+  // MEDIUM - service-daemon config files (nginx.conf, redis.conf, postgresql.conf, prometheus.yml)
+  {
+    pattern: /\/(nginx|apache|httpd|redis|mongo(db)?|mysql|mariadb|postgres(ql)?|memcached|rabbitmq|elasticsearch|haproxy|supervisor|prometheus|alertmanager|grafana)\.(conf|config|cnf|ini|ya?ml|json)\b/i,
+    severity: "medium",
+    description: "service-daemon config probe",
+  },
+  // HIGH - PHP DB-connection / include configs (connection.php, dbconn.php, config.inc, local-config.php)
+  {
+    pattern: /\/(conn(ect(ion)?)?|dbconn|db[_-]?config|database[_-]?config|setting|common|global|function|local-config|_?config)\.(php|inc)\b/i,
+    severity: "high",
+    description: "PHP DB-connection config probe",
+  },
+  // HIGH - secret-manager / tool credential dotfiles (.sops.yaml, .infisical.json, .shodan/api_key, .op/config)
+  {
+    pattern: /\/\.(chef|capistrano|firebase|sops|infisical|mongorc|op|s3ql|shodan|s3backup|rclone|doppler|1password)\b/i,
+    severity: "high",
+    description: "secret-manager dotfile probe",
+  },
+  // HIGH - mail-client rc + storage-sync creds (non-dot / mail-rc siblings of .netrc/.pgpass)
+  // Sample: GET /.msmtprc, GET /muttrc, GET /s3cfg, GET /rclone.conf
+  {
+    pattern: /\/\.?(msmtprc|mailrc|esmtprc|fetchmailrc|muttrc|netrc|pgpass|s3cfg)\b|\/(rclone|boto)\.(conf|cfg)\b/i,
+    severity: "high",
+    description: "mail-client rc / storage-sync cred probe",
+  },
+  // HIGH - secret/config archive exfil (config.zip, secrets.tar.gz, credentials.zip, db.zip)
+  {
+    pattern: /\/(config|secrets?|credentials|creds|keys|tokens?|db|database|dump|vault|env|mail|smtp|email|mailer)\.(zip|tgz|tar(\.(gz|bz2|xz))?|rar|7z|gz|bz2)\b/i,
+    severity: "high",
+    description: "secret/config archive exfil probe",
+  },
+  // MEDIUM - JS-framework config files (may embed API keys / public env)
+  // Sample: GET /next.config.js, GET /nuxt.config.js, GET /gatsby-config.js
+  {
+    pattern: /\/(next|nuxt|gatsby|vite|svelte|astro|remix|pm2|vue|rollup|tailwind|babel)[.-]config\.(c?[jt]s|json)\b/i,
+    severity: "medium",
+    description: "JS-framework config probe",
+  },
+  // HIGH - GCP/cloud service-account JSON (underscore/plain forms beyond serviceAccountKey/firebase-adminsdk)
+  // Sample: GET /serviceaccount.json, GET /service_account_key.json, GET /gcp.json, GET /gitlab-secrets.json
+  {
+    pattern: /\/(service[._-]?account([._-]?key)?|serviceaccount|gcp|cloud|arm_template|gitlab-secrets)\.json\b/i,
+    severity: "high",
+    description: "cloud service-account JSON probe",
+  },
+  // MEDIUM - Spring Boot Actuator under a management base-path (scanners prefix /manage/ or /actuator/)
+  // Sample: GET /manage/env, GET /manage/configprops, GET /manage/heapdump
+  {
+    pattern: /\/(manage|management|actuator)\/(env|beans|health|info|trace|configprops|mappings|metrics|threaddump|heapdump|httptrace|loggers|auditevents|scheduledtasks|logfile|dump|shutdown)\b/i,
+    severity: "medium",
+    description: "Spring Actuator management-path probe",
+  },
+  // MEDIUM - bare secret-name paths (/secret, /credentials, /passwd, /secret_key). Bare
+  // tokens?/keys? dropped to avoid legit OAuth /token and API /keys endpoints.
+  {
+    pattern: /\/\.?(secrets?|credentials?|passwd|shadow|master\.passwd|secret[_-]?key|secretkey|api[_-]?keys?|private[_-]?key)(\.[\w]+)?$/i,
+    severity: "medium",
+    description: "bare secret-name path probe",
+  },
+  // HIGH - Joomla config leak (CVE-2023-23752 unauth API exposes DB creds)
+  // Sample: GET /api/index.php/v1/config/application?public=true
+  {
+    pattern: /\/api\/index\.php\/v1\/config\/application/i,
+    severity: "high",
+    description: "Joomla config leak probe (CVE-2023-23752)",
+  },
+  // HIGH - Metabase setup-token leak to RCE (CVE-2023-38646)
+  // Sample: GET /api/session/properties
+  {
+    pattern: /\/api\/session\/properties\b/i,
+    severity: "high",
+    description: "Metabase setup-token probe (CVE-2023-38646)",
+  },
+  // MEDIUM - CrushFTP WebInterface (CVE-2024-4040 auth bypass / file read)
+  {
+    pattern: /\/WebInterface\//i,
+    severity: "medium",
+    description: "CrushFTP WebInterface probe (CVE-2024-4040)",
+  },
+  // HIGH - MediaWiki LocalSettings.php (DB creds + secret key)
+  {
+    pattern: /\/LocalSettings\.php\b/i,
+    severity: "high",
+    description: "MediaWiki LocalSettings probe",
+  },
+  // HIGH - Drupal site settings.php (DB creds under /sites/*/)
+  // Sample: GET /sites/default/local.settings.php
+  {
+    pattern: /\/sites\/[\w-]+\/[\w.-]*settings\.php\b/i,
+    severity: "high",
+    description: "Drupal site settings probe",
+  },
+  // MEDIUM - GitLab API recon (public project/snippet/user enumeration)
+  // Sample: GET /api/v4/snippets?visibility=public
+  {
+    pattern: /\/api\/v4\/(projects|snippets|users|groups)\b/i,
+    severity: "medium",
+    description: "GitLab API recon probe",
+  },
+  // HIGH - secrets exposed via generic API path (/api/v1/secrets, /api/secrets/*)
+  {
+    pattern: /\/api\/[\w.\/-]*secrets?(\/|\b)/i,
+    severity: "high",
+    description: "API secrets endpoint probe",
+  },
+  // HIGH - Jenkins (script console = RCE, credentials.xml = stored secrets)
+  // Sample: GET /jenkins/script, GET /jenkins/credentials.xml
+  {
+    pattern: /\/jenkins\b/i,
+    severity: "high",
+    description: "Jenkins probe (script console/credentials)",
+  },
+  // HIGH - unauth AI-infra APIs (SageMaker /invocations, Flowise apikey, Airflow connections/variables leak)
+  // Sample: GET /v1/models, GET /airflow/api/v1/connections, GET /flowise/api/v1/apikey
+  {
+    pattern: /\/(v1\/models|invocations|flowise\/api|airflow\/api|airflow\.cfg)\b|\.well-known\/agent\.json/i,
+    severity: "high",
+    description: "unauth AI-infra API probe",
+  },
+  // MEDIUM - DICOM/PACS extended endpoints (OHIF viewer, qido/wado/rs studies - PHI disclosure)
+  {
+    pattern: /\/ohif(\/|\b)|\/(qido|wado|rs)\/studies\b/i,
+    severity: "medium",
+    description: "DICOM/PACS extended probe",
+  },
+  // MEDIUM - CVS version-control metadata exposure (Root/Entries/Repository leak source + creds)
+  {
+    pattern: /\/CVS\/(Root|Entries|Repository)\b/i,
+    severity: "medium",
+    description: "CVS metadata exposure probe",
+  },
+  // HIGH - kubeconfig variants + mounted service-account token (cluster admin creds)
+  {
+    pattern: /\/(kube-config|\.kubeconfig|kubectl\.ya?ml|var\/run\/secrets\/kubernetes)/i,
+    severity: "high",
+    description: "kubeconfig / service-account token probe",
+  },
+  // MEDIUM - Symfony/PHP dev front controllers (debug mode = info disclosure/RCE)
+  // Sample: GET /frontend_dev.php, GET /phptest.php
+  {
+    pattern: /\/(frontend|backend|web)_dev\.php\b|\/phptest\.php\b/i,
+    severity: "medium",
+    description: "Symfony dev front-controller probe",
+  },
+  // MEDIUM - generic .log disclosure (application.log, server.log, wp-debug.log, php_errors.log)
+  {
+    pattern: /\/[\w.-]*\.log\b/i,
+    severity: "medium",
+    description: "log file disclosure probe",
+  },
+  // MEDIUM - package-manifest / dependency-source recon (package-lock.json, Dockerfile, Makefile, requirements.txt)
+  {
+    pattern: /\/(package-lock\.json|yarn\.lock|composer\.(lock|auth)|\.?npmrcs?|\.?pip\.conf|\.?gemrc|\.bundle\/config|requirements\.txt|Dockerfile|Makefile|Vagrantfile|GoogleService-Info\.plist)\b/i,
+    severity: "medium",
+    description: "package-manifest / dependency-source recon probe",
+  },
 ];
 
 export const METHOD_THREATS: MethodThreat[] = [
