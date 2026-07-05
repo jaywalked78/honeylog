@@ -9,6 +9,8 @@ import type {
 } from "../strategies/Strategy.js";
 import { singleIpBurst } from "../strategies/singleIpBurst.js";
 import { subnetFingerprintOverlap } from "../strategies/subnetFingerprintOverlap.js";
+import { asnPathFingerprintCluster } from "../strategies/asnPathFingerprintCluster.js";
+import { uaReputation } from "../strategies/uaReputation.js";
 import type {
   CampaignCandidateFromStrategy,
   HoneyRequest,
@@ -21,7 +23,12 @@ import type {
 
 // Ordered pipeline: producers (coordinated-actor strategies) run first so the markers they write
 // are visible to consumers (single-actor strategies) within the same epoch. Hand-ordered for alpha.
-const ORDERED_STRATEGIES: Strategy[] = [subnetFingerprintOverlap, singleIpBurst];
+const ORDERED_STRATEGIES: Strategy[] = [
+  subnetFingerprintOverlap,
+  asnPathFingerprintCluster,
+  uaReputation,
+  singleIpBurst,
+];
 
 export class CrossEpochCampaignDeduplicator {
   private map = new Map<string, number>();

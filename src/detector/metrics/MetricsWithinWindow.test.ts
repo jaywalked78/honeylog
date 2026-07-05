@@ -34,4 +34,27 @@ describe("per_asn_fingerprint_clusters", () => {
     expect(cluster!.pathUnionSize).toBe(2);
     expect([...cluster!.ips].sort()).toEqual(["3.3.3.1", "3.3.3.2", "3.3.3.3"]);
   });
+
+  it("does not let a larger single-path census cluster shadow a multi-path cluster", () => {
+    // Five IPs probing exactly one shared endpoint (census) vs three IPs sharing a 2-path wordlist.
+    const reqs: HoneyRequest[] = [];
+    for (const ip of ["4.4.4.1", "4.4.4.2", "4.4.4.3", "4.4.4.4", "4.4.4.5"]) {
+      reqs.push(makeRequest({ ip, route: "/pdown" }));
+    }
+    for (const ip of ["3.3.3.1", "3.3.3.2", "3.3.3.3"]) {
+      reqs.push(makeRequest({ ip, route: "/a" }), makeRequest({ ip, route: "/b" }));
+    }
+
+    const cluster = compute(reqs).per_asn_fingerprint_clusters.get(396982);
+    expect(cluster).toBeDefined();
+    expect(cluster!.ipCount).toBe(3);
+    expect(cluster!.pathUnionSize).toBe(2);
+  });
+
+  it("exposes no cluster when an ASN has only single-path fingerprints", () => {
+    const reqs = ["5.5.5.1", "5.5.5.2", "5.5.5.3"].map((ip) =>
+      makeRequest({ ip, route: "/pdown" }),
+    );
+    expect(compute(reqs).per_asn_fingerprint_clusters.get(396982)).toBeUndefined();
+  });
 });

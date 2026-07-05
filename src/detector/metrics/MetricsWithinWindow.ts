@@ -7,6 +7,13 @@ export type CfHeaderConsistency =
   | "forged"
   | "integer_encoded";
 
+export interface FingerprintCluster {
+  fingerprint: string;
+  ipCount: number;
+  pathUnionSize: number;
+  ips: string[];
+}
+
 export interface MetricsWithinWindow {
   // Per-request (keyed by request id)
   forged_cf_internal_ip: Map<bigint, boolean>;
@@ -30,10 +37,7 @@ export interface MetricsWithinWindow {
   per_asn_tor_concentration: Map<number, number>;
   per_asn_path_union_size: Map<number, number>;
   per_asn_subnet_cohesion: Map<number, Map<string, number>>; // asn -> /24 -> Jaccard
-  per_asn_fingerprint_clusters: Map<
-    number,
-    { fingerprint: string; ipCount: number; pathUnionSize: number; ips: string[] }
-  >; // asn -> dominant same-fingerprint cluster (cross-/24)
+  per_asn_fingerprint_clusters: Map<number, FingerprintCluster>; // asn -> dominant same-fingerprint cluster (cross-/24)
 
   // Window-global
   method_global_rarity: Map<string, number>; // method -> fraction of all traffic in window
@@ -165,52 +169,68 @@ export function compute(requests: HoneyRequest[]): MetricsWithinWindow {
   }
 
   // === Per-ASN path-fingerprint clusters (cross-/24 correlation) ===
-  // Independent of the /24 cohesion pass above. Group an ASN's threat IPs by exact route-set
-  // fingerprint; expose the cluster with the most IPs. IPs in a cluster share an identical route
-  // set (that is why they collide), so the first set's size is the cluster's path-union size.
-  const asnIpRoutes = new Map<number, Map<string, Set<string>>>();
+  // Independent of the /24 cohesion pass above.
+  const threatIpRouteSetsByAsn = new Map<number, Map<string, Set<string>>>();
   for (const req of requests) {
     if (req.threat_level === "none") continue;
     const asn = req.ip_location?.asn;
     if (asn == null) continue;
-    let ipMap = asnIpRoutes.get(asn);
-    if (!ipMap) {
-      ipMap = new Map();
-      asnIpRoutes.set(asn, ipMap);
+    let routeSetsByIp = threatIpRouteSetsByAsn.get(asn);
+    if (!routeSetsByIp) {
+      routeSetsByIp = new Map();
+      threatIpRouteSetsByAsn.set(asn, routeSetsByIp);
     }
-    let routes = ipMap.get(req.ip);
+    let routes = routeSetsByIp.get(req.ip);
     if (!routes) {
       routes = new Set();
-      ipMap.set(req.ip, routes);
+      routeSetsByIp.set(req.ip, routes);
     }
     routes.add(req.route);
   }
 
-  for (const [asn, ipMap] of asnIpRoutes) {
-    const clustersByFingerprint = new Map<string, { ips: string[]; routes: Set<string> }>();
-    for (const [ip, routes] of ipMap) {
-      const fingerprint = routeSetFingerprint(routes);
-      let cluster = clustersByFingerprint.get(fingerprint);
-      if (!cluster) {
-        cluster = { ips: [], routes };
-        clustersByFingerprint.set(fingerprint, cluster);
-      }
-      cluster.ips.push(ip);
+  for (const [asn, routeSetsByIp] of threatIpRouteSetsByAsn) {
+    const clustersByFingerprint = groupIpsByIdenticalRouteSet(routeSetsByIp);
+    const dominantCluster =
+      selectClusterWithMostIpsIgnoringSinglePathCensusClusters(clustersByFingerprint);
+    if (dominantCluster) {
+      metrics.per_asn_fingerprint_clusters.set(asn, dominantCluster);
     }
-
-    let dominant: { fingerprint: string; ipCount: number; pathUnionSize: number; ips: string[] } | null = null;
-    for (const [fingerprint, cluster] of clustersByFingerprint) {
-      if (dominant === null || cluster.ips.length > dominant.ipCount) {
-        dominant = {
-          fingerprint,
-          ipCount: cluster.ips.length,
-          pathUnionSize: cluster.routes.size,
-          ips: cluster.ips,
-        };
-      }
-    }
-    if (dominant) metrics.per_asn_fingerprint_clusters.set(asn, dominant);
   }
 
   return metrics;
+}
+
+function groupIpsByIdenticalRouteSet(
+  routeSetsByIp: Map<string, Set<string>>,
+): Map<string, { ips: string[]; sharedRouteSet: Set<string> }> {
+  const clustersByFingerprint = new Map<string, { ips: string[]; sharedRouteSet: Set<string> }>();
+  for (const [ip, routes] of routeSetsByIp) {
+    const fingerprint = routeSetFingerprint(routes);
+    let cluster = clustersByFingerprint.get(fingerprint);
+    if (!cluster) {
+      cluster = { ips: [], sharedRouteSet: routes };
+      clustersByFingerprint.set(fingerprint, cluster);
+    }
+    cluster.ips.push(ip);
+  }
+  return clustersByFingerprint;
+}
+
+function selectClusterWithMostIpsIgnoringSinglePathCensusClusters(
+  clustersByFingerprint: Map<string, { ips: string[]; sharedRouteSet: Set<string> }>,
+): FingerprintCluster | null {
+  let dominantCluster: FingerprintCluster | null = null;
+  for (const [fingerprint, cluster] of clustersByFingerprint) {
+    const isSinglePathCensusCluster = cluster.sharedRouteSet.size < 2;
+    if (isSinglePathCensusCluster) continue;
+    if (dominantCluster === null || cluster.ips.length > dominantCluster.ipCount) {
+      dominantCluster = {
+        fingerprint,
+        ipCount: cluster.ips.length,
+        pathUnionSize: cluster.sharedRouteSet.size,
+        ips: cluster.ips,
+      };
+    }
+  }
+  return dominantCluster;
 }
