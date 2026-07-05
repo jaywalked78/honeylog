@@ -6,6 +6,7 @@
  *
  * Categories:
  *   BOT_PATTERNS  - user agent strings that identify scanners/bots
+ *   EXPLOIT_TOOL_UA - user agents whose mere presence is malicious (campaign scoring only)
  *   PATH_THREATS   - URL paths that indicate probing
  *   METHOD_THREATS - HTTP methods used for scanning
  *   BODY_THREATS   - request body patterns for injection/malware
@@ -125,6 +126,15 @@ export const BOT_PATTERNS: RegExp[] = [
   /fingerprint-scan/i, // fingerprinting scanner (bare "scan" token; /scanner/i misses it)
   /SecurityAudit/i, // security-audit scanner (distinct from /SecurityScanner\b/)
   /CyberConvoyScout/i, // CyberConvoy recon/scanning service
+];
+
+// Exploit-tool User-Agents - mere presence is malicious. Subset semantics vs BOT_PATTERNS (which is
+// source-tagging, includes benign crawlers, never affects threat_level): consumed only by the
+// ua-reputation strategy to raise campaign confidence, never by detectThreats. Keep conservative/low-FP.
+export const EXPLOIT_TOOL_UA: RegExp[] = [
+  /libredtail/i, // libredtail-http exploit toolkit
+  /opendirme|credhunt/i, // open-directory credential-hunting scanner (.env/secrets probes)
+  /CVE-\d{4}-\d+/i, // literal CVE id in UA (implant scanners, e.g. CVE-2023-20198)
 ];
 
 export const PATH_THREATS: PathThreat[] = [

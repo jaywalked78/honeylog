@@ -2,6 +2,10 @@ import type { Strategy, StrategyScoreResult } from "./Strategy.js";
 import { sigmoid, subnet24 } from "../utils/strategyHelpers.js";
 import type { HoneyRequest } from "../detector/types.js";
 
+const SECONDS_PER_DAY = 86400;
+const PERSISTENCE_MIDPOINT_DAYS = 7;
+const PERSISTENCE_STEEPNESS_DAYS = 3;
+
 export const singleIpBurst: Strategy = {
   id: "single-ip-burst",
   related_strategy_tags: ["volume_anomaly", "credential_harvester_family"],
@@ -12,7 +16,10 @@ export const singleIpBurst: Strategy = {
     "per_ip_unique_paths",
     "per_ip_time_burst_sec",
   ],
-  markers_observed: ["recent_env_probe", "recent_credential_probe"],
+  // Pure consumer in alpha. Its producer markers (recent_env_probe, recent_credential_probe) are
+  // deferred until something consumes them - they're content-conditional, so they need the predicate
+  // mechanism noted on Strategy.markers_observed before they can be re-added.
+  markers_observed: [],
   markers_consumed: ["seen_in_subnet_spray", "seen_in_tor_distributed_scan"],
 
   observe(req, metrics) {
@@ -62,8 +69,13 @@ export const singleIpBurst: Strategy = {
     const diversityScore = sigmoid((uniquePaths - 80) / 40); // .5 at uniquePaths = 80, approx .95 at uniquePaths = 200
     const burstScore =
       burstSec < 60 ? 1 : Math.max(0, 1 - (burstSec - 60) / 540); // 1 if <60s, decays to 0 at 10 min
+    const spanDays = Number.isFinite(burstSec) ? burstSec / SECONDS_PER_DAY : 0;
+    const persistenceScore = sigmoid(
+      (spanDays - PERSISTENCE_MIDPOINT_DAYS) / PERSISTENCE_STEEPNESS_DAYS,
+    );
+    const timeScore = Math.max(burstScore, persistenceScore);
     const confidence =
-      volumeScore * 0.4 + diversityScore * 0.4 + burstScore * 0.2;
+      volumeScore * 0.4 + diversityScore * 0.4 + timeScore * 0.2;
 
     return {
       confidence,
@@ -74,6 +86,9 @@ export const singleIpBurst: Strategy = {
         volumeScore,
         diversityScore,
         burstScore,
+        spanDays,
+        persistenceScore,
+        timeScore,
       },
     };
   },

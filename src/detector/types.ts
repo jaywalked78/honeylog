@@ -52,6 +52,7 @@ export interface CampaignCandidateFromStrategy {
   default_campaign_type: string; // catalog id the strategy thinks this campaign should match
   identifier: string;
   confidence: number; // 0..1
+  campaign_threat_level: ThreatLevel; // classifyConfidence(confidence) - informational band for dashboards
   evidence: Record<string, unknown>;
   related_strategy_tags: string[]; // for cross-referencing
   time_range: { first: Date; last: Date };

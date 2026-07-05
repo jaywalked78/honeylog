@@ -5,6 +5,7 @@ export { honey, detectThreats } from "./middleware/honey.js";
 // inspect what honey is matching against.
 export {
   BOT_PATTERNS,
+  EXPLOIT_TOOL_UA,
   PATH_THREATS,
   METHOD_THREATS,
   BODY_THREATS,

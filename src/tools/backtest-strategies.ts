@@ -1,14 +1,16 @@
 import { dbc } from "../helpers/database_connector.js";
-import { IpAsnMarkerTracker } from "../detector/IpAsnMarkerTracker.js";
-import type { SnapshotScope } from "../detector/IpAsnMarkerTracker.js";
+import { InMemoryMarkerStore } from "../detector/MarkerSnapshot.js";
 import { compute as computeMetrics } from "../detector/metrics/MetricsWithinWindow.js";
+import { classifyConfidence } from "../utils/strategyHelpers.js";
 import type {
   Strategy,
   StrategyScoreResult,
   RequestObservationFromStrategy,
 } from "../strategies/Strategy.js";
 import { singleIpBurst } from "../strategies/singleIpBurst.js";
-import { subnet24 } from "../utils/strategyHelpers.js";
+import { subnetFingerprintOverlap } from "../strategies/subnetFingerprintOverlap.js";
+import { asnPathFingerprintCluster } from "../strategies/asnPathFingerprintCluster.js";
+import { uaReputation } from "../strategies/uaReputation.js";
 import type {
   CampaignCandidateFromStrategy,
   HoneyRequest,
@@ -19,10 +21,14 @@ import type {
   ForwardingChain,
 } from "../detector/types.js";
 
-// alpha: hardcoded registry. Real registry lands with strategies 2 and 3.
-const STRATEGIES: Record<string, Strategy> = {
-  "single-ip-burst": singleIpBurst,
-};
+// Ordered pipeline: producers (coordinated-actor strategies) run first so the markers they write
+// are visible to consumers (single-actor strategies) within the same epoch. Hand-ordered for alpha.
+const ORDERED_STRATEGIES: Strategy[] = [
+  subnetFingerprintOverlap,
+  asnPathFingerprintCluster,
+  uaReputation,
+  singleIpBurst,
+];
 
 export class CrossEpochCampaignDeduplicator {
   private map = new Map<string, number>();
@@ -37,16 +43,6 @@ export class CrossEpochCampaignDeduplicator {
   deduplicate(identifier: string, asOfMs: number, cooldownInMs: number): void {
     this.map.set(identifier, asOfMs + cooldownInMs);
   }
-}
-
-function resolveStrategy(strategyId: string): Strategy {
-  const strategy = STRATEGIES[strategyId];
-  if (strategy === undefined) {
-    throw new Error(
-      `Unknown strategy "${strategyId}". Known strategies: ${Object.keys(STRATEGIES).join(", ")}`,
-    );
-  }
-  return strategy;
 }
 
 async function resolveScanRange(
@@ -140,18 +136,6 @@ async function loadRequests(
   }));
 }
 
-function buildSnapshotScopeFromRequests(
-  requests: HoneyRequest[],
-): SnapshotScope {
-  const asns = new Set<number>();
-  const subnets = new Set<string>();
-  for (const req of requests) {
-    if (req.ip_location?.asn != null) asns.add(req.ip_location.asn);
-    subnets.add(subnet24(req.ip));
-  }
-  return { ips: [], asns: [...asns], subnets: [...subnets] };
-}
-
 function groupObservationsByKey(
   observations: RequestObservationFromStrategy[],
 ): Map<string, RequestObservationFromStrategy[]> {
@@ -192,6 +176,7 @@ function buildCandidate(
     default_campaign_type: strategy.default_campaign_type,
     identifier,
     confidence: scoreResult.confidence,
+    campaign_threat_level: classifyConfidence(scoreResult.confidence),
     evidence: scoreResult.evidence,
     related_strategy_tags: strategy.related_strategy_tags,
     time_range: {
@@ -205,9 +190,9 @@ function buildCandidate(
 }
 
 async function runEpoch(
-  markerTracker: IpAsnMarkerTracker,
+  markerStore: InMemoryMarkerStore,
   deduplicator: CrossEpochCampaignDeduplicator,
-  strategy: Strategy,
+  strategies: Strategy[],
   epochStart: Date,
   epochEnd: Date,
   minConfidence: number,
@@ -216,35 +201,47 @@ async function runEpoch(
   if (requests.length === 0) return [];
 
   const metrics = computeMetrics(requests);
-  const filter = buildSnapshotScopeFromRequests(requests);
-  const markerSnapshotInstance = await markerTracker.snapshotMarkers(
-    filter,
-    epochEnd,
-  );
-
-  const observations = requests
-    .map((req) => strategy.observe(req, metrics))
-    .filter((obs): obs is RequestObservationFromStrategy => obs !== null);
-
-  const grouped = groupObservationsByKey(observations);
   const candidates: CampaignCandidateFromStrategy[] = [];
-  for (const [, group] of grouped) {
-    const scoreResult = strategy.score(group, metrics, markerSnapshotInstance);
-    if (scoreResult === null || scoreResult.confidence < minConfidence) {
-      continue;
-    }
 
-    const identifier = strategy.identifier_from(group[0].key, scoreResult);
-    if (deduplicator.isDeduplicated(identifier, epochEnd.getTime())) {
-      continue;
-    }
+  for (const strategy of strategies) {
+    // Fresh snapshot per strategy: a consumer sees the markers any earlier producer wrote this epoch.
+    const markerSnapshot = markerStore.snapshotMarkers(epochEnd);
 
-    candidates.push(buildCandidate(strategy, identifier, scoreResult, group));
-    deduplicator.deduplicate(
-      identifier,
-      epochEnd.getTime(),
-      strategy.default_suppress_for_ms,
-    );
+    const observations = requests
+      .map((req) => strategy.observe(req, metrics))
+      .filter((obs): obs is RequestObservationFromStrategy => obs !== null);
+
+    const grouped = groupObservationsByKey(observations);
+    for (const [, group] of grouped) {
+      const scoreResult = strategy.score(group, metrics, markerSnapshot);
+      if (scoreResult === null || scoreResult.confidence < minConfidence) {
+        continue;
+      }
+
+      const identifier = strategy.identifier_from(group[0].key, scoreResult);
+      if (deduplicator.isDeduplicated(identifier, epochEnd.getTime())) {
+        continue;
+      }
+
+      candidates.push(buildCandidate(strategy, identifier, scoreResult, group));
+      deduplicator.deduplicate(
+        identifier,
+        epochEnd.getTime(),
+        strategy.default_suppress_for_ms,
+      );
+
+      // Record this strategy's markers (scope_value = the group key) so later strategies on the same
+      // actor read them and stand down this epoch.
+      const expiresAtMs = epochEnd.getTime() + strategy.default_suppress_for_ms;
+      for (const marker of strategy.markers_observed) {
+        markerStore.recordMarker(
+          marker.scope_type,
+          group[0].key,
+          marker.marker_name,
+          expiresAtMs,
+        );
+      }
+    }
   }
 
   return candidates;
@@ -256,6 +253,13 @@ function jsonReplacerForNonFinite(_key: string, value: unknown): unknown {
     return value > 0 ? "Infinity" : "-Infinity";
   }
   return value;
+}
+
+function formatEvidenceValue(value: unknown): string {
+  if (typeof value === "number") {
+    return Number.isInteger(value) ? String(value) : value.toFixed(3);
+  }
+  return String(value);
 }
 
 function renderOutput(
@@ -278,10 +282,12 @@ function renderOutput(
 
   console.log(`\n${sorted.length} candidate(s):\n`);
   for (const candidate of sorted) {
-    const evidence = candidate.evidence as Record<string, number>;
+    const evidence = Object.entries(candidate.evidence)
+      .map(([key, value]) => `${key}=${formatEvidenceValue(value)}`)
+      .join(" ");
     console.log(
       `${candidate.confidence.toFixed(3)}  ${candidate.identifier}\n` +
-        `        volume=${evidence.volume} uniquePaths=${evidence.uniquePaths} burstSec=${Number(evidence.burstSec).toFixed(1)}\n` +
+        `        ${evidence}\n` +
         `        ${candidate.time_range.first.toISOString()} -> ${candidate.time_range.last.toISOString()}\n` +
         `        paths: ${candidate.sample_paths_probed.slice(0, 3).join(", ")}`,
     );
@@ -295,12 +301,13 @@ function getArgValue(args: string[], name: string): string | undefined {
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
 
-  const strategyId = getArgValue(args, "strategy");
-  if (strategyId === undefined) {
+  // Optional output filter. All strategies still RUN (producers must run for suppression to happen);
+  // this only limits which candidates get printed.
+  const strategyFilter = getArgValue(args, "strategy");
+  const knownIds = ORDERED_STRATEGIES.map((strategy) => strategy.id);
+  if (strategyFilter !== undefined && !knownIds.includes(strategyFilter)) {
     console.error(
-      "Usage: node backtest-strategies.js --strategy=<strategy-id> " +
-        "[--from=<iso>] [--to=<iso>] [--windowInMs=<n>] [--stepInMs=<n>] " +
-        "[--minConfidence=<0..1>] [--output=table|jsonl]",
+      `Unknown --strategy "${strategyFilter}". Known: ${knownIds.join(", ")}`,
     );
     process.exit(1);
   }
@@ -318,16 +325,15 @@ async function main(): Promise<void> {
   const minConfidenceArg = parseFloat(getArgValue(args, "minConfidence") ?? "");
   const minConfidence = isNaN(minConfidenceArg) ? 0.5 : minConfidenceArg;
 
-  const output = getArgValue(args, "output") ?? "table";
+  const outputFormat = getArgValue(args, "output") ?? "table";
 
-  const markerTracker = new IpAsnMarkerTracker();
+  const markerStore = new InMemoryMarkerStore();
   const deduplicator = new CrossEpochCampaignDeduplicator();
 
   try {
-    const strategy = resolveStrategy(strategyId);
     const [scanFrom, scanTo] = await resolveScanRange(fromDate, toDate);
     console.log(
-      `Scanning ${strategy.id} from ${scanFrom.toISOString()} to ${scanTo.toISOString()}`,
+      `Scanning ${knownIds.join(" -> ")} from ${scanFrom.toISOString()} to ${scanTo.toISOString()}`,
     );
 
     const epochs = generateEpochs(scanFrom, scanTo, windowInMs, stepInMs);
@@ -338,9 +344,9 @@ async function main(): Promise<void> {
     const allCandidates: CampaignCandidateFromStrategy[] = [];
     for (const [epochStart, epochEnd] of epochs) {
       const epochCandidates = await runEpoch(
-        markerTracker,
+        markerStore,
         deduplicator,
-        strategy,
+        ORDERED_STRATEGIES,
         epochStart,
         epochEnd,
         minConfidence,
@@ -348,7 +354,13 @@ async function main(): Promise<void> {
       allCandidates.push(...epochCandidates);
     }
 
-    renderOutput(allCandidates, output);
+    const toRender =
+      strategyFilter === undefined
+        ? allCandidates
+        : allCandidates.filter(
+            (candidate) => candidate.strategy_id === strategyFilter,
+          );
+    renderOutput(toRender, outputFormat);
   } catch (error) {
     console.error(error);
     process.exit(1);
