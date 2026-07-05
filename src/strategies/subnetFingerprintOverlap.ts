@@ -1,10 +1,11 @@
 import { HoneyRequest } from "../detector/types.js";
 import { Strategy, StrategyScoreResult } from "./Strategy.js";
-import { sigmoid, subnet24 } from "../utils/strategyHelpers.js";
+import { sigmoid, subnet24, isAttackPath } from "../utils/strategyHelpers.js";
 
-// Detection gates - a /24 must clear BOTH before it can fire (and write the suppression marker).
-const MIN_CLUSTER_IPS = 3; // distinct IPs in the /24 (one-line knob for the future 2-IP tier)
-const MIN_COHESION = 0.2; // cohesion floor: minimum average route-set overlap before IPs count as coordinated
+// Detection gate: enough distinct IPs in the /24 to be a cluster (one-line knob for the future 2-IP tier).
+// The old MIN_COHESION floor is gone - maxOR exists precisely because breadth-led sprays have cohesion ~= 0;
+// the attack-path gate in score() replaces it.
+const MIN_CLUSTER_IPS = 3;
 
 export const subnetFingerprintOverlap: Strategy = {
   id: "subnet-fingerprint-overlap",
@@ -17,6 +18,7 @@ export const subnetFingerprintOverlap: Strategy = {
 
   observe(req, metrics) {
     if (req.threat_level === "none") return null;
+    if (req.is_tor) return null; // hand the Tor pool to tor-distributed-scan; it is incoherent noise here
     return {
       stream: "subnet-fingerprint-overlap",
       key: subnet24(req.ip),
@@ -37,28 +39,36 @@ export const subnetFingerprintOverlap: Strategy = {
     const distinctIpsInSubnet = new Set(requests.map((req) => req.ip)).size;
     if (distinctIpsInSubnet < MIN_CLUSTER_IPS) return null;
 
-    // gate 2: the IPs' route sets actually overlap (precomputed + threat-scoped in compute())
-    const cohesion = metrics.per_asn_subnet_cohesion.get(asn)?.get(subnet) ?? 0;
-    if (cohesion < MIN_COHESION) return null;
+    // gate 2 (replaces the old cohesion floor): the cluster must collectively probe at least one
+    // PATH_THREATS-matched route. breadth = distinct attack paths across the /24.
+    const attackPathCount = new Set(
+      requests.filter((req) => isAttackPath(req.route)).map((req) => req.route),
+    ).size;
+    if (attackPathCount < 1) return null;
 
-    // breadth: distinct paths this cluster probed collectively (its own /24 union, from the group)
+    // gate 3 (ONVIF guard): a single shared canonical path is a census, not a spray (min_unique_paths > 1).
     const pathUnionSize = new Set(requests.map((req) => req.route)).size;
+    if (pathUnionSize < 2) return null;
 
+    // cohesion is precomputed attack-scoped + Tor-excluded in compute()
+    const cohesion = metrics.per_asn_subnet_cohesion.get(asn)?.get(subnet) ?? 0;
+
+    const sizeScore = sigmoid((distinctIpsInSubnet - 5) / 2); // midpoint 5 IPs
     const cohesionScore = sigmoid((cohesion - 0.4) / 0.12); // S-curve midpoint at 0.40 cohesion
-    const clusterSizeScore = sigmoid((distinctIpsInSubnet - 5) / 2); // S-curve midpoint at 5 IPs
-    const breadthScore = sigmoid((pathUnionSize - 20) / 10); // S-curve midpoint at 20 paths
-    // weighted blend: cohesion dominates, then cluster size, then breadth
-    const confidence =
-      cohesionScore * 0.5 + clusterSizeScore * 0.3 + breadthScore * 0.2;
+    const breadthScore = sigmoid((attackPathCount - 8) / 5); // midpoint 8 attack paths
+    // maxOR: tight overlap (cohesion) OR broad enumeration (breadth). The two archetypes are
+    // anti-correlated, so ORing them catches both convergent cred clusters and divided bursts.
+    const confidence = sizeScore * 0.4 + Math.max(cohesionScore, breadthScore) * 0.6;
 
     return {
       confidence,
       evidence: {
         cohesion,
         distinctIpsInSubnet,
+        attackPathCount,
         pathUnionSize,
+        sizeScore,
         cohesionScore,
-        clusterSizeScore,
         breadthScore,
       },
     };

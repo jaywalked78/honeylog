@@ -1,6 +1,7 @@
 import { dbc } from "../helpers/database_connector.js";
 import { InMemoryMarkerStore } from "../detector/MarkerSnapshot.js";
 import { compute as computeMetrics } from "../detector/metrics/MetricsWithinWindow.js";
+import { classifyConfidence } from "../utils/strategyHelpers.js";
 import type {
   Strategy,
   StrategyScoreResult,
@@ -168,6 +169,7 @@ function buildCandidate(
     default_campaign_type: strategy.default_campaign_type,
     identifier,
     confidence: scoreResult.confidence,
+    campaign_threat_level: classifyConfidence(scoreResult.confidence),
     evidence: scoreResult.evidence,
     related_strategy_tags: strategy.related_strategy_tags,
     time_range: {

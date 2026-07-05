@@ -14,4 +14,6 @@ personal/
 
 CLAUDE.md
 
-docs/superpowers/specs/
+docs/superpowers/
+
+src/middleware/detectedCampaigns.js

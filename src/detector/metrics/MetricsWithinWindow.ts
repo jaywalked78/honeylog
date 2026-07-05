@@ -1,5 +1,5 @@
 import type { HoneyRequest } from "../types.js";
-import { jaccard, subnet24 } from "../../utils/strategyHelpers.js";
+import { jaccard, subnet24, routeSetFingerprint, isAttackPath } from "../../utils/strategyHelpers.js";
 
 export type CfHeaderConsistency =
   | "legit"
@@ -30,6 +30,10 @@ export interface MetricsWithinWindow {
   per_asn_tor_concentration: Map<number, number>;
   per_asn_path_union_size: Map<number, number>;
   per_asn_subnet_cohesion: Map<number, Map<string, number>>; // asn -> /24 -> Jaccard
+  per_asn_fingerprint_clusters: Map<
+    number,
+    { fingerprint: string; ipCount: number; pathUnionSize: number; ips: string[] }
+  >; // asn -> dominant same-fingerprint cluster (cross-/24)
 
   // Window-global
   method_global_rarity: Map<string, number>; // method -> fraction of all traffic in window
@@ -89,6 +93,7 @@ export function compute(requests: HoneyRequest[]): MetricsWithinWindow {
     per_asn_tor_concentration: new Map(),
     per_asn_path_union_size: new Map(),
     per_asn_subnet_cohesion: new Map(),
+    per_asn_fingerprint_clusters: new Map(),
     method_global_rarity: new Map(),
   };
 
@@ -102,14 +107,21 @@ export function compute(requests: HoneyRequest[]): MetricsWithinWindow {
     metrics.per_ip_volume.set(ip, reqs.length);
     metrics.per_ip_unique_paths.set(ip, new Set(reqs.map((r) => r.route)).size);
     metrics.per_ip_time_burst_sec.set(ip, computeBurstSec(reqs));
+    metrics.per_ip_useragent_diversity.set(
+      ip,
+      new Set(reqs.map((r) => r.user_agent)).size / reqs.length,
+    );
   }
 
-  // === Per-ASN coordinated-scan metrics ===
-  // Route sets are scoped to threat-bearing requests only. Benign paths (/, /favicon.ico) are
-  // shared by everyone and would manufacture phantom cohesion between otherwise unrelated IPs.
+  // === Per-ASN coordinated-scan metrics (attack-path-scoped, Tor-excluded) ===
+  // Tabs hold only attack paths (PATH_THREATS matches): benign paths (/, /favicon.ico) are shared by
+  // everyone and would manufacture phantom cohesion. Every non-Tor threat IP still gets a tab even with
+  // no attack route, so an IP with no shared attack path drags cohesion down (matches the tuning baseline).
+  // Tor IPs are excluded - they belong to tor-distributed-scan, not this /24 cohesion.
   const routeCabinet: AsnCabinet = new Map();
   for (const req of requests) {
     if (req.threat_level === "none") continue;
+    if (req.is_tor) continue;
     const asn = req.ip_location?.asn;
     if (asn == null) continue;
     const subnet = subnet24(req.ip);
@@ -127,9 +139,9 @@ export function compute(requests: HoneyRequest[]): MetricsWithinWindow {
     let tab = folder.get(req.ip);
     if (!tab) {
       tab = new Set();
-      folder.set(req.ip, tab);
+      folder.set(req.ip, tab); // tab exists even with no attack route, so it still drags cohesion
     }
-    tab.add(req.route); // file this route slip under this IP's tab
+    if (isAttackPath(req.route)) tab.add(req.route); // only attack paths count toward cohesion
   }
 
   for (const [asn, drawer] of routeCabinet) {
@@ -150,6 +162,54 @@ export function compute(requests: HoneyRequest[]): MetricsWithinWindow {
     metrics.per_asn_distinct_ips.set(asn, distinctIps.size);
     metrics.per_asn_path_union_size.set(asn, pathUnion.size);
     metrics.per_asn_subnet_cohesion.set(asn, cohesionBySubnet);
+  }
+
+  // === Per-ASN path-fingerprint clusters (cross-/24 correlation) ===
+  // Independent of the /24 cohesion pass above. Group an ASN's threat IPs by exact route-set
+  // fingerprint; expose the cluster with the most IPs. IPs in a cluster share an identical route
+  // set (that is why they collide), so the first set's size is the cluster's path-union size.
+  const asnIpRoutes = new Map<number, Map<string, Set<string>>>();
+  for (const req of requests) {
+    if (req.threat_level === "none") continue;
+    const asn = req.ip_location?.asn;
+    if (asn == null) continue;
+    let ipMap = asnIpRoutes.get(asn);
+    if (!ipMap) {
+      ipMap = new Map();
+      asnIpRoutes.set(asn, ipMap);
+    }
+    let routes = ipMap.get(req.ip);
+    if (!routes) {
+      routes = new Set();
+      ipMap.set(req.ip, routes);
+    }
+    routes.add(req.route);
+  }
+
+  for (const [asn, ipMap] of asnIpRoutes) {
+    const clustersByFingerprint = new Map<string, { ips: string[]; routes: Set<string> }>();
+    for (const [ip, routes] of ipMap) {
+      const fingerprint = routeSetFingerprint(routes);
+      let cluster = clustersByFingerprint.get(fingerprint);
+      if (!cluster) {
+        cluster = { ips: [], routes };
+        clustersByFingerprint.set(fingerprint, cluster);
+      }
+      cluster.ips.push(ip);
+    }
+
+    let dominant: { fingerprint: string; ipCount: number; pathUnionSize: number; ips: string[] } | null = null;
+    for (const [fingerprint, cluster] of clustersByFingerprint) {
+      if (dominant === null || cluster.ips.length > dominant.ipCount) {
+        dominant = {
+          fingerprint,
+          ipCount: cluster.ips.length,
+          pathUnionSize: cluster.routes.size,
+          ips: cluster.ips,
+        };
+      }
+    }
+    if (dominant) metrics.per_asn_fingerprint_clusters.set(asn, dominant);
   }
 
   return metrics;
