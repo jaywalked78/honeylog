@@ -63,6 +63,24 @@ describe("asnPathFingerprintCluster.score", () => {
     );
   });
 
+  it("observes only members of the dominant cluster, keeping candidate fields cluster-scoped", () => {
+    const clusterMembers = scatteredIpsReplayingIdenticalRouteSetWithPerRequestUaRotation(ips);
+    const sameAsnOutsider = makeRequest({
+      ip: "34.99.99.99",
+      route: "/wp-config.php",
+      user_agent: "outsider-ua",
+    });
+    const outsiderSecondRoute = makeRequest({
+      ip: "34.99.99.99",
+      route: "/backup.sql",
+      user_agent: "outsider-ua",
+    });
+    const metrics = compute([...clusterMembers, sameAsnOutsider, outsiderSecondRoute]);
+
+    expect(asnPathFingerprintCluster.observe(clusterMembers[0], metrics)).not.toBeNull();
+    expect(asnPathFingerprintCluster.observe(sameAsnOutsider, metrics)).toBeNull();
+  });
+
   it("does not fire on a 2-IP cluster", () => {
     const reqs = scatteredIpsReplayingIdenticalRouteSetWithPerRequestUaRotation(ips.slice(0, 2));
     expect(

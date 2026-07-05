@@ -44,7 +44,7 @@ async function loadKnownAnswerCorpusReclassifiedWithCurrentPatterns(): Promise<H
     const freshClassification = detectThreats({
       url: row.full_url,
       method: row.method,
-      body: row.request_body == null ? undefined : JSON.stringify(row.request_body),
+      body: row.request_body ?? undefined,
       userAgent: row.user_agent ?? undefined,
     });
     return {

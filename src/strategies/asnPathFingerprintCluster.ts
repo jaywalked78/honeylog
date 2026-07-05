@@ -25,10 +25,14 @@ export const asnPathFingerprintCluster: Strategy = {
   markers_observed: [],
   markers_consumed: [],
 
-  observe(req) {
+  observe(req, metrics) {
     if (req.threat_level === "none") return null;
     const asn = req.ip_location?.asn;
     if (asn == null) return null;
+    // membership filter: the driver builds candidate fields (contributing_ips, samples, time_range)
+    // from the observation group, so only the scored cluster's own requests may enter it
+    const dominantCluster = metrics.per_asn_fingerprint_clusters.get(asn);
+    if (!dominantCluster || !dominantCluster.ips.includes(req.ip)) return null;
     return {
       stream: "asn-path-fingerprint-cluster",
       key: asn,
