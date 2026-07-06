@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { compute } from "../detector/metrics/MetricsWithinWindow.js";
-import { asnPathFingerprintCluster } from "./asnPathFingerprintCluster.js";
-import { makeRequest } from "../test-support/factories.js";
-import type { HoneyRequest } from "../detector/types.js";
-import type { RequestObservationFromStrategy } from "./Strategy.js";
+import { compute } from "../../src/detector/metrics/MetricsWithinWindow.js";
+import { asnPathFingerprintCluster } from "../../src/strategies/asnPathFingerprintCluster.js";
+import { makeRequest } from "../../src/test-support/factories.js";
+import type { HoneyRequest } from "../../src/detector/types.js";
+import type { RequestObservationFromStrategy } from "../../src/strategies/Strategy.js";
 
 // makeRequest defaults ip_location.asn to this and threat_level to "high"
 const AS = 396982;

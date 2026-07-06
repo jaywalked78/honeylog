@@ -5,8 +5,8 @@ import {
   jaccard,
   mean,
   routeSetFingerprint,
-} from "./strategyHelpers.js";
-import { ATTACK_POOL } from "../test-support/factories.js";
+} from "../../src/utils/strategyHelpers.js";
+import { ATTACK_POOL } from "../../src/test-support/factories.js";
 
 describe("classifyConfidence", () => {
   it("maps confidence to threat bands", () => {

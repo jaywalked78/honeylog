@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { compute } from "../detector/metrics/MetricsWithinWindow.js";
-import { uaReputation } from "./uaReputation.js";
-import { makeRequest } from "../test-support/factories.js";
-import type { HoneyRequest } from "../detector/types.js";
-import type { RequestObservationFromStrategy } from "./Strategy.js";
+import { compute } from "../../src/detector/metrics/MetricsWithinWindow.js";
+import { uaReputation } from "../../src/strategies/uaReputation.js";
+import { makeRequest } from "../../src/test-support/factories.js";
+import type { HoneyRequest } from "../../src/detector/types.js";
+import type { RequestObservationFromStrategy } from "../../src/strategies/Strategy.js";
 
 function observations(reqs: HoneyRequest[]): RequestObservationFromStrategy[] {
   return reqs.map((r) => ({

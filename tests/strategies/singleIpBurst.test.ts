@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { compute } from "../detector/metrics/MetricsWithinWindow.js";
-import { singleIpBurst } from "./singleIpBurst.js";
-import { makeRequest } from "../test-support/factories.js";
-import { InMemoryMarkerStore } from "../detector/MarkerSnapshot.js";
-import type { HoneyRequest } from "../detector/types.js";
-import type { RequestObservationFromStrategy } from "./Strategy.js";
+import { compute } from "../../src/detector/metrics/MetricsWithinWindow.js";
+import { singleIpBurst } from "../../src/strategies/singleIpBurst.js";
+import { makeRequest } from "../../src/test-support/factories.js";
+import { InMemoryMarkerStore } from "../../src/detector/MarkerSnapshot.js";
+import type { HoneyRequest } from "../../src/detector/types.js";
+import type { RequestObservationFromStrategy } from "../../src/strategies/Strategy.js";
 
 const WINDOW_START_MS = new Date("2026-06-12T00:00:00.000Z").getTime();
 

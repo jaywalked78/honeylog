@@ -30,6 +30,10 @@ class Database {
     return this.pool.connect();
   }
 
+  getPool(): pg.Pool {
+    return this.pool;
+  }
+
   async query<Type extends QueryResultRow = QueryResultRow>(
     sql: string,
     args: unknown[] = [],

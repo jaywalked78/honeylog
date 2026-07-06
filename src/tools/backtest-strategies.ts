@@ -20,6 +20,10 @@ import type {
   ThreatDetail,
   ForwardingChain,
 } from "../detector/types.js";
+import type { CampaignRecordStore } from "../detector/persistence/campaignRecordStore.js";
+import { InMemoryCampaignRecordStore } from "../detector/persistence/InMemoryCampaignRecordStore.js";
+import { PostgresCampaignRecordStore } from "../detector/persistence/PostgresCampaignRecordStore.js";
+import { jsonReplacerForNonFinite } from "../detector/persistence/campaignRecordStore.js";
 
 // Ordered pipeline: producers (coordinated-actor strategies) run first so the markers they write
 // are visible to consumers (single-actor strategies) within the same epoch. Hand-ordered for alpha.
@@ -30,19 +34,10 @@ const ORDERED_STRATEGIES: Strategy[] = [
   singleIpBurst,
 ];
 
-export class CrossEpochCampaignDeduplicator {
-  private map = new Map<string, number>();
-
-  isDeduplicated(identifier: string, asOfMs: number): boolean {
-    const expiresAt = this.map.get(identifier);
-    if (expiresAt === undefined) return false;
-    if (expiresAt <= asOfMs) return false;
-    return true;
-  }
-
-  deduplicate(identifier: string, asOfMs: number, cooldownInMs: number): void {
-    this.map.set(identifier, asOfMs + cooldownInMs);
-  }
+interface CandidateUpsertReport {
+  candidate: CampaignCandidateFromStrategy;
+  outcome: "inserted" | "updated";
+  times_fired: number;
 }
 
 async function resolveScanRange(
@@ -191,17 +186,17 @@ function buildCandidate(
 
 async function runEpoch(
   markerStore: InMemoryMarkerStore,
-  deduplicator: CrossEpochCampaignDeduplicator,
+  store: CampaignRecordStore,
   strategies: Strategy[],
   epochStart: Date,
   epochEnd: Date,
   minConfidence: number,
-): Promise<CampaignCandidateFromStrategy[]> {
+): Promise<CandidateUpsertReport[]> {
   const requests = await loadRequests(epochStart, epochEnd);
   if (requests.length === 0) return [];
 
   const metrics = computeMetrics(requests);
-  const candidates: CampaignCandidateFromStrategy[] = [];
+  const reports: CandidateUpsertReport[] = [];
 
   for (const strategy of strategies) {
     // Fresh snapshot per strategy: a consumer sees the markers any earlier producer wrote this epoch.
@@ -219,19 +214,16 @@ async function runEpoch(
       }
 
       const identifier = strategy.identifier_from(group[0].key, scoreResult);
-      if (deduplicator.isDeduplicated(identifier, epochEnd.getTime())) {
-        continue;
-      }
-
-      candidates.push(buildCandidate(strategy, identifier, scoreResult, group));
-      deduplicator.deduplicate(
-        identifier,
-        epochEnd.getTime(),
-        strategy.default_suppress_for_ms,
-      );
+      const candidate = buildCandidate(strategy, identifier, scoreResult, group);
+      const upsertResult = await store.upsertCandidate(candidate, "backtest");
+      reports.push({
+        candidate,
+        outcome: upsertResult.outcome,
+        times_fired: upsertResult.campaign.times_fired,
+      });
 
       // Record this strategy's markers (scope_value = the group key) so later strategies on the same
-      // actor read them and stand down this epoch.
+      // actor read them and stand down this epoch. Re-fires re-extend expiry: active actors stay marked.
       const expiresAtMs = epochEnd.getTime() + strategy.default_suppress_for_ms;
       for (const marker of strategy.markers_observed) {
         markerStore.recordMarker(
@@ -244,15 +236,7 @@ async function runEpoch(
     }
   }
 
-  return candidates;
-}
-
-function jsonReplacerForNonFinite(_key: string, value: unknown): unknown {
-  if (typeof value === "number" && !Number.isFinite(value)) {
-    if (Number.isNaN(value)) return "NaN";
-    return value > 0 ? "Infinity" : "-Infinity";
-  }
-  return value;
+  return reports;
 }
 
 function formatEvidenceValue(value: unknown): string {
@@ -262,26 +246,40 @@ function formatEvidenceValue(value: unknown): string {
   return String(value);
 }
 
-function renderOutput(
-  candidates: CampaignCandidateFromStrategy[],
-  format: string,
-): void {
-  if (candidates.length === 0) {
+function renderOutput(reports: CandidateUpsertReport[], format: string): void {
+  if (reports.length === 0) {
     console.log("No candidates emitted.");
     return;
   }
 
-  const sorted = [...candidates].sort((a, b) => b.confidence - a.confidence);
+  const sorted = [...reports].sort(
+    (a, b) => b.candidate.confidence - a.candidate.confidence,
+  );
 
   if (format === "jsonl") {
-    for (const candidate of sorted) {
-      console.log(JSON.stringify(candidate, jsonReplacerForNonFinite));
+    for (const report of sorted) {
+      console.log(
+        JSON.stringify(
+          {
+            ...report.candidate,
+            outcome: report.outcome,
+            times_fired: report.times_fired,
+          },
+          jsonReplacerForNonFinite,
+        ),
+      );
     }
     return;
   }
 
-  console.log(`\n${sorted.length} candidate(s):\n`);
-  for (const candidate of sorted) {
+  console.log(`\n${sorted.length} candidate fire(s):\n`);
+  for (const { candidate, outcome, times_fired } of sorted) {
+    if (outcome === "updated") {
+      console.log(
+        `${candidate.confidence.toFixed(3)}  ${candidate.identifier}  (re-fire #${times_fired})`,
+      );
+      continue;
+    }
     const evidence = Object.entries(candidate.evidence)
       .map(([key, value]) => `${key}=${formatEvidenceValue(value)}`)
       .join(" ");
@@ -290,6 +288,21 @@ function renderOutput(
         `        ${evidence}\n` +
         `        ${candidate.time_range.first.toISOString()} -> ${candidate.time_range.last.toISOString()}\n` +
         `        paths: ${candidate.sample_paths_probed.slice(0, 3).join(", ")}`,
+    );
+  }
+}
+
+async function renderActiveSummary(
+  store: CampaignRecordStore,
+): Promise<void> {
+  const active = await store.listByStatus("active");
+  if (active.length === 0) return;
+  console.log(`\nActive campaigns (${active.length}):\n`);
+  for (const row of active) {
+    console.log(
+      `${row.peak_confidence.toFixed(3)}  ${row.identifier}\n` +
+        `        fired ${row.times_fired}x  latest ${row.confidence.toFixed(3)}  ` +
+        `${row.first_seen.toISOString()} -> ${row.last_seen.toISOString()}`,
     );
   }
 }
@@ -327,40 +340,49 @@ async function main(): Promise<void> {
 
   const outputFormat = getArgValue(args, "output") ?? "table";
 
+  const persist = args.includes("--persist");
   const markerStore = new InMemoryMarkerStore();
-  const deduplicator = new CrossEpochCampaignDeduplicator();
+  const store: CampaignRecordStore = persist
+    ? new PostgresCampaignRecordStore(dbc.getPool())
+    : new InMemoryCampaignRecordStore();
 
   try {
     const [scanFrom, scanTo] = await resolveScanRange(fromDate, toDate);
     console.log(
       `Scanning ${knownIds.join(" -> ")} from ${scanFrom.toISOString()} to ${scanTo.toISOString()}`,
     );
+    if (persist) {
+      console.log("Persisting candidates to campaigns (source=backtest)");
+    }
 
     const epochs = generateEpochs(scanFrom, scanTo, windowInMs, stepInMs);
     console.log(
       `Generated ${epochs.length} epoch(s) (window=${windowInMs}ms step=${stepInMs}ms)`,
     );
 
-    const allCandidates: CampaignCandidateFromStrategy[] = [];
+    const allReports: CandidateUpsertReport[] = [];
     for (const [epochStart, epochEnd] of epochs) {
-      const epochCandidates = await runEpoch(
+      const epochReports = await runEpoch(
         markerStore,
-        deduplicator,
+        store,
         ORDERED_STRATEGIES,
         epochStart,
         epochEnd,
         minConfidence,
       );
-      allCandidates.push(...epochCandidates);
+      allReports.push(...epochReports);
     }
 
     const toRender =
       strategyFilter === undefined
-        ? allCandidates
-        : allCandidates.filter(
-            (candidate) => candidate.strategy_id === strategyFilter,
+        ? allReports
+        : allReports.filter(
+            (report) => report.candidate.strategy_id === strategyFilter,
           );
     renderOutput(toRender, outputFormat);
+    if (outputFormat !== "jsonl") {
+      await renderActiveSummary(store);
+    }
   } catch (error) {
     console.error(error);
     process.exit(1);
