@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { compute } from "../detector/metrics/MetricsWithinWindow.js";
-import { subnetFingerprintOverlap } from "./subnetFingerprintOverlap.js";
-import { classifyConfidence } from "../utils/strategyHelpers.js";
-import { makeRequest, ATTACK_POOL } from "../test-support/factories.js";
-import type { HoneyRequest } from "../detector/types.js";
-import type { RequestObservationFromStrategy } from "./Strategy.js";
+import { compute } from "../../src/detector/metrics/MetricsWithinWindow.js";
+import { subnetFingerprintOverlap } from "../../src/strategies/subnetFingerprintOverlap.js";
+import { classifyConfidence } from "../../src/utils/strategyHelpers.js";
+import { makeRequest, ATTACK_POOL } from "../../src/test-support/factories.js";
+import type { HoneyRequest } from "../../src/detector/types.js";
+import type { RequestObservationFromStrategy } from "../../src/strategies/Strategy.js";
 
 function observations(
   reqs: HoneyRequest[],

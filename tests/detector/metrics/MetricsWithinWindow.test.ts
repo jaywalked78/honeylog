@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { compute } from "./MetricsWithinWindow.js";
-import { makeRequest } from "../../test-support/factories.js";
-import type { HoneyRequest } from "../types.js";
+import { compute } from "../../../src/detector/metrics/MetricsWithinWindow.js";
+import { makeRequest } from "../../../src/test-support/factories.js";
+import type { HoneyRequest } from "../../../src/detector/types.js";
 
 describe("per_ip_useragent_diversity", () => {
   it("is 1.0 when every request from an IP uses a distinct UA", () => {

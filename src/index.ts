@@ -53,3 +53,19 @@ export type {
   GeoLookupOptions,
   GeoLookupLogger,
 } from "./helpers/geoLookup.js";
+
+// Campaign persistence - CampaignRecordStore is the seam: bring your own
+// implementation or use the shipped Postgres / in-memory ones.
+export { PostgresCampaignRecordStore } from "./detector/persistence/PostgresCampaignRecordStore.js";
+export { InMemoryCampaignRecordStore } from "./detector/persistence/InMemoryCampaignRecordStore.js";
+
+export type { PostgresCampaignRecordStoreOptions } from "./detector/persistence/PostgresCampaignRecordStore.js";
+export type {
+  CampaignRecordStore,
+  CampaignRow,
+  CampaignSource,
+  CampaignStatus,
+  CampaignUpsertResult,
+  EvidenceHistoryEntry,
+} from "./detector/persistence/campaignRecordStore.js";
+export type { CampaignCandidateFromStrategy } from "./detector/types.js";
