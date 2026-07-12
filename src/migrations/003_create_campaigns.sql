@@ -32,10 +32,11 @@ CREATE TABLE IF NOT EXISTS campaigns (
     CHECK (campaign_threat_level IN ('none', 'low', 'medium', 'high'))
 );
 
--- Episode semantics: at most one open row per identifier; closed rows keep
--- history frozen. Doubles as the ON CONFLICT arbiter for the upsert.
-CREATE UNIQUE INDEX IF NOT EXISTS campaigns_open_identifier
-  ON campaigns (identifier) WHERE status != 'closed';
+-- Episode semantics: at most one open row per (identifier, source), so a
+-- backtest run never merges into a live campaign; closed rows keep history
+-- frozen. Doubles as the ON CONFLICT arbiter for the upsert.
+CREATE UNIQUE INDEX IF NOT EXISTS campaigns_open_identifier_source
+  ON campaigns (identifier, source) WHERE status != 'closed';
 
 CREATE INDEX IF NOT EXISTS campaigns_status_last_seen
   ON campaigns (status, last_seen);
@@ -43,5 +44,5 @@ CREATE INDEX IF NOT EXISTS campaigns_status_last_seen
 
 -- DOWN
 DROP INDEX IF EXISTS campaigns_status_last_seen;
-DROP INDEX IF EXISTS campaigns_open_identifier;
+DROP INDEX IF EXISTS campaigns_open_identifier_source;
 DROP TABLE IF EXISTS campaigns;

@@ -44,7 +44,8 @@ export class PostgresCampaignRecordStore implements CampaignRecordStore {
     const historyEntry = buildEvidenceHistoryEntry(candidate);
 
     // jsonb "=" in the history CASE is deep equality; the partial unique index
-    // campaigns_open_identifier is the ON CONFLICT arbiter, so closed rows never conflict.
+    // campaigns_open_identifier_source is the ON CONFLICT arbiter, so closed rows
+    // never conflict and backtest/live rows of the same identifier stay separate.
     const result = await this.pool.query<CampaignRow & { inserted: boolean }>(
       `
       INSERT INTO ${this.tableName} (
@@ -60,7 +61,7 @@ export class PostgresCampaignRecordStore implements CampaignRecordStore {
         $9::jsonb, $10::jsonb, $11::jsonb,
         $12::jsonb, $13::jsonb, jsonb_build_array($14::jsonb)
       )
-      ON CONFLICT (identifier) WHERE status != 'closed'
+      ON CONFLICT (identifier, source) WHERE status != 'closed'
       DO UPDATE SET
         first_seen            = LEAST(${this.tableName}.first_seen, EXCLUDED.first_seen),
         last_seen             = GREATEST(${this.tableName}.last_seen, EXCLUDED.last_seen),
@@ -68,7 +69,10 @@ export class PostgresCampaignRecordStore implements CampaignRecordStore {
         confidence            = EXCLUDED.confidence,
         peak_confidence       = GREATEST(${this.tableName}.peak_confidence, EXCLUDED.confidence),
         campaign_threat_level = EXCLUDED.campaign_threat_level,
-        contributing_ips      = EXCLUDED.contributing_ips,
+        contributing_ips      = (
+          SELECT COALESCE(jsonb_agg(DISTINCT ip), '[]'::jsonb)
+          FROM jsonb_array_elements(${this.tableName}.contributing_ips || EXCLUDED.contributing_ips) AS ip
+        ),
         sample_paths_probed   = EXCLUDED.sample_paths_probed,
         sample_user_agents    = EXCLUDED.sample_user_agents,
         related_strategy_tags = EXCLUDED.related_strategy_tags,

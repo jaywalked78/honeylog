@@ -164,5 +164,41 @@ export function describeCampaignRecordStoreContract(
       expect(found?.confidence).toBe(candidate.confidence);
       expect(found?.contributing_ips).toEqual(candidate.contributing_ips);
     });
+
+    it("unions contributing_ips across re-fires, keeping earlier participant IPs", async () => {
+      await store.upsertCandidate(
+        makeCandidate({ contributing_ips: ["203.0.113.7", "203.0.113.8"] }),
+        "backtest",
+      );
+      const rotatedFire = makeCandidate({
+        contributing_ips: ["203.0.113.9"],
+        evidence: { requestCount: 5 },
+        time_range: {
+          first: new Date("2026-06-12T06:00:00.000Z"),
+          last: new Date("2026-06-12T06:45:00.000Z"),
+        },
+      });
+
+      const result = await store.upsertCandidate(rotatedFire, "backtest");
+
+      expect([...result.campaign.contributing_ips].sort()).toEqual([
+        "203.0.113.7",
+        "203.0.113.8",
+        "203.0.113.9",
+      ]);
+    });
+
+    it("keeps same-identifier campaigns from different sources as separate open rows", async () => {
+      await store.upsertCandidate(makeCandidate(), "backtest");
+      await store.upsertCandidate(makeCandidate(), "live");
+
+      const active = await store.listByStatus("active");
+
+      expect(active).toHaveLength(2);
+      expect(active.map((row) => row.source).sort()).toEqual([
+        "backtest",
+        "live",
+      ]);
+    });
   });
 }

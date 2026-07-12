@@ -209,7 +209,11 @@ async function runEpoch(
     const grouped = groupObservationsByKey(observations);
     for (const [, group] of grouped) {
       const scoreResult = strategy.score(group, metrics, markerSnapshot);
-      if (scoreResult === null || scoreResult.confidence < minConfidence) {
+      if (
+        scoreResult === null ||
+        !Number.isFinite(scoreResult.confidence) ||
+        scoreResult.confidence < minConfidence
+      ) {
         continue;
       }
 
